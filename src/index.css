@@ -1,0 +1,2 @@
+/* Global reset intentionally stays small; the Masterflow interface lives in App.css. */
+html,body,#root{min-height:100%;margin:0}

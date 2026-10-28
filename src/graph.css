@@ -1,0 +1,63 @@
+.editor-view:has(.graph-layout) { width: min(1280px, 100%); }
+.editor-view.full-spec-view { width: min(1120px, 100%); }
+.full-spec-view .config-code { min-height: min(68vh, 860px); max-height: none; font-size: 11px; }
+.editor-view:has(.graph-layout) .view-heading { margin-bottom: 17px; }
+.editor-view:has(.graph-layout) .view-heading h2 { margin-bottom: 4px; }
+.editor-view:has(.graph-layout) .view-heading p code { color: var(--accent); font-size: .94em; }
+.graph-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 370px); gap: 15px; align-items: stretch; min-height: 535px; }
+.graph-main, .node-inspector { min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.graph-main { display: flex; flex-direction: column; }
+.graph-toolbar { min-height: 51px; padding: 0 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.graph-toolbar div { display: grid; gap: 4px; }
+.graph-toolbar b { font-size: 10px; font-weight: 620; }
+.graph-toolbar small { color: var(--muted); font-size: 9px; }
+.graph-viewport { flex: 1; min-height: 470px; overflow: auto; background-color: var(--panel); background-image: radial-gradient(var(--line) .8px, transparent .8px); background-size: 19px 19px; }
+.graph-canvas { position: relative; min-width: 100%; min-height: 100%; }
+.graph-edges { position: absolute; inset: 0; overflow: visible; color: #a9a5bb; pointer-events: none; }
+.graph-edges path { fill: none; stroke: currentColor; stroke-width: 1.7; }
+.graph-node { position: absolute; z-index: 1; width: 190px; height: 85px; padding: 12px 12px 10px 37px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--text); box-shadow: 0 2px 7px #17171708; text-align: left; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.graph-node:hover { transform: translateY(-1px); border-color: #bdb5dc; box-shadow: 0 5px 14px #1717170b; }
+.graph-node.selected { border-color: #9689d5; box-shadow: 0 0 0 2px #7869d21b, 0 3px 10px #17171708; }
+.graph-node.execution-queue { border-color: #d7d9df; }
+.graph-node.execution-running { border-color: #8070df; background: #f8f6ff; box-shadow: 0 0 0 3px #7869d220, 0 4px 14px #1717170b; }
+.graph-node.execution-failed { border-color: #d77c76; background: #fff8f7; }
+.graph-node.execution-succeeded { border-color: #72b68b; background: #f6fcf8; }
+.graph-node.execution-not_started { border-style: dashed; opacity: .68; }
+.graph-node.read-only { cursor: default; }
+.graph-node.read-only:hover { transform: none; }
+.dark .graph-node.execution-running { background: #2b2938; }
+.dark .graph-node.execution-failed { background: #352524; }
+.dark .graph-node.execution-succeeded { background: #24332a; }
+.request-plan-view { margin-top: 14px; }
+.request-plan-view> b { display: block; margin-bottom: 9px; color: var(--muted); font-size: 9px; font-weight: 620; }
+.request-plan-view .graph-viewport { min-height: 180px; max-height: 320px; border: 1px solid var(--line); border-radius: 8px; }
+.request-plan-view .graph-node { pointer-events: none; }
+.graph-node-index { position: absolute; top: 12px; left: 11px; width: 17px; height: 17px; border-radius: 5px; display: grid; place-items: center; background: var(--soft); color: var(--muted); font: 8px "SFMono-Regular", Consolas, monospace; }
+.graph-node>b { max-width: 100%; font-size: 10px; font-weight: 630; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.graph-node>small { max-width: 100%; color: var(--accent); font-size: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.graph-node-meta { color: var(--muted); font-size: 8px; }
+.graph-empty { position: absolute; inset: 35px; display: grid; place-items: center; color: var(--muted); font-size: 10px; }
+.node-inspector { padding: 15px; overflow: auto; }
+.inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.inspector-heading h3 { margin: 5px 0 0; font-size: 14px; font-weight: 630; overflow-wrap: anywhere; }
+.inspector-help { margin: 11px 0 18px; color: var(--muted); font-size: 9px; line-height: 1.55; }
+.dependency-checks { display: grid; gap: 4px; margin: 8px 0 17px; }
+.dependency-checks label { min-height: 28px; display: flex; align-items: center; gap: 8px; padding: 4px 7px; border-radius: 5px; color: var(--text); font-size: 9px; }
+.dependency-checks label:hover { background: var(--soft); }
+.dependency-checks input { accent-color: #8074c9; }
+.node-yaml-label { margin-top: 13px; }
+.node-code { box-sizing: border-box; width: 100%; min-height: 255px; max-height: 45vh; margin-top: 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); font-size: 9px; }
+.inspector-empty { height: 100%; min-height: 230px; display: grid; align-content: center; justify-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
+.inspector-empty b { color: var(--text); font-weight: 600; }
+@media (max-width: 1050px) { .graph-layout { grid-template-columns: minmax(0, 1fr); } .node-inspector { min-height: 350px; } }
+@media (max-width: 650px) { .graph-layout { gap: 9px; } .graph-viewport { min-height: 360px; } .graph-toolbar { padding: 0 9px; } }
+.dark .graph-edges { color: #79748d; }
+.spec-upload-control { position: relative; min-height: 58px; box-sizing: border-box; display: flex; align-items: center; gap: 11px; padding: 9px 11px; border: 1px dashed var(--line); border-radius: 7px; background: var(--soft); color: var(--text); }
+.spec-upload-control:hover { border-color: #a69bdc; background: var(--accent-soft); }
+.spec-upload-control>span:nth-child(2) { min-width: 0; display: grid; gap: 4px; }
+.spec-upload-control b { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 600; }
+.spec-upload-control small { color: var(--muted); font-size: 9px; font-weight: 400; }
+.spec-upload-control input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.upload-glyph { width: 28px; height: 28px; display: grid; place-items: center; flex: none; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--accent); font-size: 16px; }
+.form-error { border: 1px solid #f0d1ce; border-radius: 6px; padding: 8px 9px; background: #fff4f3; color: #a44743; font-size: 9px; line-height: 1.45; }
+.dark .form-error { border-color: #583936; background: #342321; color: #f1aaa4; }
