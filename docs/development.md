@@ -19,14 +19,7 @@ CONVEX_SELF_HOSTED_ADMIN_KEY=<self-hosted Convex CLI admin key>
 
 For the standard self-hosted Docker setup, the backend API/client URL is `http://127.0.0.1:3210`, while the HTTP actions/site URL is `http://127.0.0.1:3211`. Do not point `VITE_CONVEX_SITE_URL` at port 3210. The CLI uses `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` to connect to the self-hosted instance.
 
-Keep `.env.local` out of source control. Set `AUTH_TOKENS_ADMIN_KEY` as an environment variable on the Convex deployment, not as a `VITE_*` variable. Generate a unique random value of at least 32 bytes and pipe it into the CLI to avoid putting the secret in shell history:
-
-```sh
-openssl rand -hex 32 | bunx --bun convex env set AUTH_TOKENS_ADMIN_KEY
-bunx --bun convex env list --names-only
-```
-
-The second command verifies the variable name is configured without printing its value. To use the value in the desktop token manager, retrieve it directly in a trusted terminal with `bunx --bun convex env get AUTH_TOKENS_ADMIN_KEY`; do not paste it into source, `.env.local`, chat, logs, or screenshots. The UI keeps the key in memory only while the token manager is open. Create worker bearer tokens in that page and store them in the worker's secret configuration.
+Keep `.env.local` out of source control. Auth tokens are managed through regular Convex client queries and mutations; no additional admin key or token-management HTTP configuration is required. The UI generates a random bearer token in the browser, stores only its SHA-256 hash in Convex, and shows the plaintext once. Anyone with access to the Convex deployment can create, edit, list, or revoke worker tokens. Store each plaintext token in the corresponding worker's secret configuration.
 
 ## Run locally
 
@@ -36,7 +29,7 @@ bunx --bun convex dev --once --typecheck enable --tail-logs disable
 bun run dev
 ```
 
-`convex dev` must target the same self-hosted deployment where `AUTH_TOKENS_ADMIN_KEY` was set. Confirm its printed deployment URL before syncing functions. For a one-time sync, use `--once`; omit it to watch and sync code changes while developing.
+`convex dev` must target the same self-hosted deployment as the desktop app. Confirm its printed deployment URL before syncing functions. For a one-time sync, use `--once`; omit it to watch and sync code changes while developing.
 
 Vite uses port `1420` for Tauri development (`strictPort: true`). For a browser-only preview, use another port if `1420` is busy:
 
@@ -85,9 +78,7 @@ bunx --bun convex run requests:list '{"specSlug":"song-with-cover"}' --push
 ## Troubleshooting
 
 - **UI says connecting to Convex:** check `VITE_CONVEX_URL` and ensure the self-hosted backend API is running and reachable from the desktop webview.
-- **Token manager shows “Failed to fetch”:** check that `VITE_CONVEX_SITE_URL` points to the HTTP actions service (port `3211` in the standard Docker setup), that the UI origin can reach it, and that the deployment has been synced with the `/hooks/auth-tokens` OPTIONS routes.
-- **Token manager shows “Unauthorized”:** verify the admin key was copied from the same deployment as the HTTP endpoint. An incorrect key returns `401`; a browser CORS/network problem typically reports “Failed to fetch”.
-- **Token manager returns `503`:** set `AUTH_TOKENS_ADMIN_KEY` in the Convex deployment environment; the value must contain at least 32 bytes.
+- **Auth token manager cannot load tokens:** check that the desktop is connected to the expected Convex deployment and that the `authTokens.list` query is available in the synced functions.
 - **Worker hook returns `401`:** verify the worker bearer token is active, unexpired, and sent as a bearer token in the `Authorization` header.
 - **Claim returns `[]`:** verify the request is `waiting` and the spec slug matches.
 - **Build cannot write `.vite-temp`:** use `bunx --bun vite build --configLoader runner` or a writable checkout.

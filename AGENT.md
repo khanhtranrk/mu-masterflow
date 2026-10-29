@@ -26,7 +26,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `convex/specs.ts`: spec queries and mutations, YAML retrieval, archive handling.
 - `convex/requests.ts`: request creation/list/update and request/node status validators.
 - `convex/units.ts`: unit heartbeat and atomic request claiming.
-- `convex/http.ts`: bearer-authenticated worker endpoints and admin-key-protected token-management endpoints.
+- `convex/http.ts`: bearer-authenticated worker HTTP endpoints.
 - `convex/authTokens.ts`: internal auth-token lookup, creation, updates, revocation, and last-used tracking.
 - `src-tauri/`: Tauri v2 desktop wrapper and window config.
 - `README.md`: repository entry point.
@@ -39,7 +39,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 4. **A pipeline is a DAG.** `depends_on` determines edges. Do not flatten pipeline execution into a single ordered step list. Unknown YAML fields and node configuration must survive UI edits.
 5. **Node states are runtime data, not the spec graph.** `nodeStates` is keyed by node name and may contain `status`, `device`, `artifacts`, and `logs`; the UI overlays those states on the YAML pipeline graph.
 6. **Claiming must stay atomic.** `units.claim` selects requests through `by_spec_slug_and_status` and changes `waiting` to `possessed` in the same Convex mutation.
-7. **Worker authorization uses auth tokens.** Worker HTTP hooks validate the bearer token against the token hash in `authTokens`. Management HTTP routes require the separate server-only `AUTH_TOKENS_ADMIN_KEY`; do not expose token CRUD as public Convex functions.
+7. **Worker authorization uses auth tokens.** Worker HTTP hooks validate the bearer token against the token hash in `authTokens`. The desktop manages token metadata through public Convex queries/mutations; token plaintext is generated in the browser and shown only once.
 8. **Archiving a spec retains its dependent requests.** `specs.remove` sets `deletedAt`; the UI confirms before archiving.
 9. **Use Convex indexes.** Do not scan whole tables with `.collect()` or filter database queries in memory. Add/adjust indexes when adding lookup paths.
 10. **Avoid hard-coded assumptions about pipeline names or workload types.** Specs can define arbitrary pipelines and workloads.
@@ -51,7 +51,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - Request creation accepts `specSlug`, `pipelineName`, and `payload`.
 - Worker reports use `POST /hooks/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.
 - Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
-- Auth-token management uses `GET /hooks/auth-tokens` and `POST` routes under `/hooks/auth-tokens/`; the root route and child routes both need matching `OPTIONS` handlers for browser CORS preflight.
+- Auth-token management uses the Convex client API. Worker HTTP hooks remain under `/hooks/` and use bearer tokens.
 - Hook routes and exact JSON contracts are in [docs/worker-hooks.md](docs/worker-hooks.md).
 
 ## Compatibility note
@@ -69,4 +69,4 @@ Request node states include optional `device`, `artifacts`, and `logs` per node.
 
 ## Local environment
 
-`.env.local` is local configuration and must not be committed. This checkout is configured for a self-hosted Convex deployment. `VITE_CONVEX_URL` is the client/API origin; `VITE_CONVEX_SITE_URL` is the HTTP actions origin for worker hooks and token administration. Keep `AUTH_TOKENS_ADMIN_KEY` in the Convex deployment environment, never in Vite variables. See [docs/development.md](docs/development.md).
+`.env.local` is local configuration and must not be committed. This checkout is configured for a self-hosted Convex deployment. `VITE_CONVEX_URL` is the client/API origin; `VITE_CONVEX_SITE_URL` is the HTTP actions origin for worker hooks. See [docs/development.md](docs/development.md).

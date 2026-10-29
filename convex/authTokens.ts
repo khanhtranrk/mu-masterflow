@@ -3,7 +3,10 @@ import { v } from "convex/values";
 import {
   internalMutation,
   internalQuery,
+  mutation,
+  query,
 } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 
 const tokenInfo = v.object({
   _id: v.id("authTokens"),
@@ -13,6 +16,24 @@ const tokenInfo = v.object({
   lastUsedAt: v.optional(v.number()),
   expiresAt: v.optional(v.number()),
   deletedAt: v.optional(v.number()),
+});
+
+const toTokenInfo = ({
+  _id,
+  _creationTime,
+  name,
+  createdAt,
+  lastUsedAt,
+  expiresAt,
+  deletedAt,
+}: Doc<"authTokens">) => ({
+  _id,
+  _creationTime,
+  name,
+  createdAt,
+  ...(lastUsedAt !== undefined && { lastUsedAt }),
+  ...(expiresAt !== undefined && { expiresAt }),
+  ...(deletedAt !== undefined && { deletedAt }),
 });
 
 
@@ -66,7 +87,7 @@ export const markUsed = internalMutation({
   },
 });
 
-export const list = internalQuery({
+export const list = query({
   args: {
     includeRevoked: v.optional(v.boolean()),
   },
@@ -81,9 +102,7 @@ export const list = internalQuery({
       .order("desc")
       .take(100);
 
-    if (!includeRevoked) {
-      return tokens;
-    }
+    if (!includeRevoked) return tokens.map(toTokenInfo);
 
     const revoked = await ctx.db
       .query("authTokens")
@@ -95,7 +114,8 @@ export const list = internalQuery({
 
     return [...tokens, ...revoked]
       .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, 100);
+      .slice(0, 100)
+      .map(toTokenInfo);
   },
 });
 
@@ -112,23 +132,25 @@ export const get = internalQuery({
       return null;
     }
 
-    return token;
+    return toTokenInfo(token);
   },
 });
 
-export const create = internalMutation({
+export const create = mutation({
   args: {
     name: v.string(),
+    tokenHash: v.string(),
     expiresAt: v.optional(v.number()),
   },
-  returns: v.object({
-    id: v.id("authTokens"),
-    token: v.string(),
-  }),
+  returns: v.id("authTokens"),
 
-  handler: async (ctx, { name, expiresAt }) => {
+  handler: async (ctx, { name, tokenHash, expiresAt }) => {
     if (!name.trim()) {
       throw new Error("Token name is required");
+    }
+
+    if (!/^[0-9a-f]{64}$/.test(tokenHash)) {
+      throw new Error("tokenHash must be a SHA-256 hex digest");
     }
 
     if (
@@ -138,22 +160,6 @@ export const create = internalMutation({
       throw new Error("expiresAt must be in the future");
     }
 
-    // Generate a cryptographically random 256-bit token.
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const token = Array.from(bytes, (byte) =>
-      byte.toString(16).padStart(2, "0"),
-    ).join("");
-
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(token),
-    );
-
-    const tokenHash = Array.from(
-      new Uint8Array(digest),
-      (byte) => byte.toString(16).padStart(2, "0"),
-    ).join("");
-
     const id = await ctx.db.insert("authTokens", {
       name: name.trim(),
       tokenHash,
@@ -161,12 +167,11 @@ export const create = internalMutation({
       ...(expiresAt !== undefined && { expiresAt }),
     });
 
-    // The plaintext token is returned only once.
-    return { id, token };
+    return id;
   },
 });
 
-export const update = internalMutation({
+export const update = mutation({
   args: {
     id: v.id("authTokens"),
     name: v.optional(v.string()),
@@ -198,7 +203,7 @@ export const update = internalMutation({
   },
 });
 
-export const revoke = internalMutation({
+export const revoke = mutation({
   args: {
     id: v.id("authTokens"),
   },

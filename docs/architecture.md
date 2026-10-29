@@ -18,7 +18,7 @@ The app is a Tauri v2 desktop shell around a web frontend. Convex is the shared 
 
 ## Tables
 
-The desktop connects to the Convex client/API URL for realtime data. Worker hooks and the auth-token manager connect to the Convex HTTP actions/site URL. These URLs are different on a self-hosted installation.
+The desktop connects to the Convex client/API URL for realtime data. Worker hooks connect to the Convex HTTP actions/site URL. These URLs are different on a self-hosted installation.
 
 ### `specs`
 
@@ -38,7 +38,7 @@ One document per worker `unitId`, including `unitType`, `status` (`online` or `o
 
 ### `authTokens`
 
-Stores token `name`, `tokenHash`, `createdAt`, optional `lastUsedAt`, `expiresAt`, and `deletedAt`. Plaintext is returned only when a token is created; worker requests are authorized against the stored hash. Management HTTP routes require the separate server-side `AUTH_TOKENS_ADMIN_KEY`.
+Stores token `name`, `tokenHash`, `createdAt`, optional `lastUsedAt`, `expiresAt`, and `deletedAt`. The UI generates token plaintext in the browser, hashes it with SHA-256, and stores only the hash. Worker requests are authorized against the stored hash. Token management uses public Convex queries and mutations.
 
 ## Main flows
 
@@ -78,10 +78,10 @@ The UI creates a request with a chosen `pipelineName` and parameter `payload`. A
 - `convex/specs.ts`: spec CRUD and internal YAML query.
 - `convex/requests.ts`: request creation/list/update and node-state reporting.
 - `convex/units.ts`: heartbeat and atomic claim.
-- `convex/http.ts`: bearer auth, CORS/preflight, worker hooks, and admin-key-protected token-management HTTP routes.
-- `convex/authTokens.ts`: internal token lookup and management functions.
+- `convex/http.ts`: bearer auth, CORS/preflight, and worker hooks.
+- `convex/authTokens.ts`: public token-management queries/mutations and internal worker-token lookup.
 
-Auth-token CRUD functions remain internal. The desktop calls the HTTP actions under `/hooks/auth-tokens`; those routes require the server-side `AUTH_TOKENS_ADMIN_KEY`. Worker requests use tokens stored as hashes in `authTokens`. The plaintext token is returned once at creation and is never available to list/get operations.
+The desktop calls `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` through Convex's normal reactive client API. These functions are public, so anyone with access to the Convex deployment can manage worker tokens. The browser generates the random token and sends only its SHA-256 hash to Convex; plaintext is shown once and is never available to list/get operations.
 
 ## Runtime node states
 

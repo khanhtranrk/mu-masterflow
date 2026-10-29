@@ -1,26 +1,19 @@
 # Worker HTTP hooks
 
-Worker hook requests require a bearer token issued by the `authTokens` service. The Auth tokens management routes use the separate `AUTH_TOKENS_ADMIN_KEY` secret.
+Worker hook requests require a bearer token created in the desktop Auth tokens page. Token management uses the normal Convex client API; worker hook endpoints remain HTTP actions.
 
 ```http
 Authorization: Bearer <worker-auth-token>
 Content-Type: application/json
 ```
 
-Worker tokens are stored as hashes; plaintext is only returned at creation time. Never commit or log either kind of secret. Paths below are relative to the Convex HTTP site URL (`VITE_CONVEX_SITE_URL` locally).
+Worker tokens are stored as hashes; plaintext is generated in the browser and shown only at creation time. Never commit or log plaintext tokens. Paths below are relative to the Convex HTTP site URL (`VITE_CONVEX_SITE_URL` locally).
 
 ## Auth token management
 
-Set `AUTH_TOKENS_ADMIN_KEY` in the Convex deployment environment to a unique random secret of at least 32 bytes. The management endpoints return `503` until configured and require it in the bearer authorization header.
+The desktop calls the public Convex functions `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` directly. No admin key or token-management HTTP route is required. Any client with access to the Convex deployment can manage worker tokens, so use this setup only where that access level is acceptable.
 
-- `GET /hooks/auth-tokens?includeRevoked=true|false`: list token metadata; revoked tokens are excluded by default.
-- `POST /hooks/auth-tokens/create`: create with `{ "name": "...", "expiresAt": 123 }`; `expiresAt` is optional and is a millisecond timestamp. The response includes the plaintext token exactly once.
-- `POST /hooks/auth-tokens/update`: update with `{ "id": "...", "name": "...", "expiresAt": 123 }`; use `null` to remove expiration.
-- `POST /hooks/auth-tokens/revoke`: revoke with `{ "id": "..." }`.
-
-The desktop token manager keeps the admin key in memory only while the page is open. Do not place it in Vite environment variables or client source.
-
-The UI calls `GET /hooks/auth-tokens` and `POST` on the create, update, and revoke child paths. Both the exact `/hooks/auth-tokens` path and `/hooks/auth-tokens/…` child paths answer `OPTIONS`, as browsers preflight requests carrying an Authorization header. An unmatched preflight route results in a browser “Failed to fetch” error before the admin key is checked.
+The browser generates a cryptographically random 256-bit token, computes its SHA-256 hash, and sends only the hash to `authTokens.create`. The plaintext is shown once and cannot be recovered from the token list. Store it in the worker's secret configuration.
 
 ## `POST /hooks/units/heartbeat`
 
@@ -107,4 +100,4 @@ Returns the exact stored YAML as `application/yaml; charset=utf-8`.
 
 ## CORS and errors
 
-Routes answer `OPTIONS` for browser/worker clients. The `/hooks/auth-tokens` root path and its child paths each have matching preflight routes. JSON errors have an `error` string and a 4xx status. Never include a configured secret in errors.
+Worker hook routes answer `OPTIONS` for browser/worker clients. JSON errors have an `error` string and a 4xx status.
