@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ConnectionSettings, ConvexServerProfile } from "../connectionSettings";
-import { AuthTokensView } from "./AuthTokensView";
+import { UnitTokensView } from "./UnitTokensView";
 import { ServerSettingsPanel } from "./ServerSettingsPanel";
 
 type SettingsViewProps = {
@@ -26,7 +26,7 @@ export function SettingsView({
   onToggleTheme,
   onSignOut,
 }: SettingsViewProps) {
-  const [authTokensExpanded, setAuthTokensExpanded] = useState(false);
+  const [unitTokensExpanded, setUnitTokensExpanded] = useState(false);
   const [serverManagerExpanded, setServerManagerExpanded] = useState(serverProfile === null);
 
   return (
@@ -77,19 +77,19 @@ export function SettingsView({
           )}
         </section>
 
-        {serverProfile && <section className="settings-section settings-auth-tokens" aria-labelledby="auth-tokens-title">
+        {serverProfile && <section className="settings-section settings-unit-tokens" aria-labelledby="unit-tokens-title">
           <div className="settings-section-copy">
-            <h2 id="auth-tokens-title">Auth tokens</h2>
-            <p>Manage worker and integration access to Convex HTTP hooks.</p>
+            <h2 id="unit-tokens-title">Unit tokens</h2>
+            <p>Manage Unit (Worker) and integration access to Convex HTTP hooks.</p>
           </div>
           <button
             className="settings-action"
-            aria-expanded={authTokensExpanded}
-            onClick={() => setAuthTokensExpanded((expanded) => !expanded)}
+            aria-expanded={unitTokensExpanded}
+            onClick={() => setUnitTokensExpanded((expanded) => !expanded)}
           >
-            {authTokensExpanded ? "Hide auth tokens" : "Manage auth tokens"}
+            {unitTokensExpanded ? "Hide unit tokens" : "Manage unit tokens"}
           </button>
-          {authTokensExpanded && <AuthTokensView />}
+          {unitTokensExpanded && <UnitTokensView />}
         </section>}
 
         {serverProfile && <section className="settings-section settings-account" aria-labelledby="account-title">

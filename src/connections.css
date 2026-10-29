@@ -176,6 +176,131 @@
   width: min(640px, 100%);
 }
 
+.settings-card-list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 17px 0 9px;
+}
+
+.settings-card-list-heading > span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.settings-card-list {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.settings-card-heading,
+.settings-card-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-card-heading {
+  justify-content: space-between;
+}
+
+.settings-card-heading b {
+  max-width: 42vw;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-card > small,
+.server-profile-card > small {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.settings-card-status {
+  padding: 3px 6px;
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.settings-card-status.active {
+  background: #edf7f0;
+  color: #42865a;
+}
+
+.dark .settings-card-status.active {
+  background: #27382d;
+  color: #a4d5b0;
+}
+
+.settings-card-actions {
+  flex: none;
+}
+
+.server-profile-form {
+  margin-bottom: 18px;
+}
+
+.server-profile-form-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.server-profile-form-fields label:first-child {
+  grid-column: 1 / -1;
+}
+
+.server-profile-help {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.server-profile-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.server-profile-title {
+  min-width: 0;
+}
+
+.server-profile-title > b {
+  max-width: min(40vw, 320px);
+}
+
+.server-settings-panel .view-heading {
+  margin-bottom: 16px;
+}
+
+.server-settings-panel .view-heading h2 {
+  font-size: 16px;
+}
+
+.server-settings-panel .view-heading p {
+  max-width: 560px;
+}
+
 .login-server-add {
   display: grid;
   justify-items: start;
@@ -617,7 +742,7 @@
   margin-bottom: 14px;
 }
 
-.login-server-list .auth-token-list-heading {
+.login-server-list .settings-card-list-heading {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -703,13 +828,28 @@
     grid-column: auto;
   }
 
-  .login-server-profile .auth-token-card-heading {
+  .login-server-profile .settings-card-heading {
     gap: 8px;
   }
 
-  .login-server-profile .auth-token-actions {
+  .settings-card-heading {
+    align-items: flex-start;
+  }
+
+  .login-server-profile .settings-card-actions {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  .server-profile-form-fields {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .server-profile-form-fields label:first-child,
+  .server-profile-help,
+  .server-profile-form-actions {
+    grid-column: auto;
   }
 }

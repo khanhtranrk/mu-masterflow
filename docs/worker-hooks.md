@@ -1,6 +1,6 @@
 # Worker HTTP hooks
 
-Worker hook requests require a bearer token created in the desktop Auth tokens page. Token management uses the normal Convex client API; worker hook endpoints remain HTTP actions.
+Worker hook requests require a Unit token created in the desktop Unit tokens page. Token management uses the normal Convex client API; worker hook endpoints remain HTTP actions.
 
 ```http
 Authorization: Bearer <worker-auth-token>
@@ -9,11 +9,11 @@ Content-Type: application/json
 
 Worker tokens are stored as hashes; plaintext is generated in the browser and shown only at creation time. Never commit or log plaintext tokens. Paths below are relative to the HTTP site URL of the currently selected Convex server profile (`VITE_CONVEX_SITE_URL` can optionally bootstrap this profile for local development).
 
-## Auth token management
+## Unit token management
 
-The desktop calls the public Convex functions `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` directly after Convex Auth sign-in. No admin key or token-management HTTP route is required. Any authenticated user on the deployment can manage worker tokens, so use this setup only where shared access is acceptable.
+The desktop calls the public Convex functions `unitTokens.list`, `unitTokens.create`, `unitTokens.update`, and `unitTokens.revoke` directly after Convex Auth sign-in. No admin key or token-management HTTP route is required. Any authenticated user on the deployment can manage Unit tokens, so use this setup only where shared access is acceptable.
 
-The browser generates a cryptographically random 256-bit token, computes its SHA-256 hash, and sends only the hash to `authTokens.create`. The plaintext is shown once and cannot be recovered from the token list. Store it in the worker's secret configuration.
+The browser generates a cryptographically random 256-bit token, computes its SHA-256 hash, and sends only the hash to `unitTokens.create`. The plaintext is shown once and cannot be recovered from the token list. Store it in the Unit's secret configuration.
 
 ## `POST /hooks/notifications/send`
 

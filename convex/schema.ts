@@ -16,7 +16,7 @@ export default defineSchema({
   .index("by_created_at", ["createdAt"])
   .index("by_deleted_at", ["deletedAt"]),
 
-  authTokens: defineTable({
+  unitTokens: defineTable({
     name: v.string(),
     tokenHash: v.string(),
     createdAt: v.number(),

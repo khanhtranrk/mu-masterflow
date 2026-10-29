@@ -131,19 +131,19 @@ export function LoginServerDialog({
 
         {settings.profiles.length > 0 && (
           <div className="login-server-list" aria-label="Saved Convex servers">
-            <div className="auth-token-list-heading">
+            <div className="settings-card-list-heading">
               <b>Saved servers <span>{settings.profiles.length}</span></b>
             </div>
             {settings.profiles.map((profile) => {
               const active = profile.id === settings.activeProfileId;
               return (
-                <article className="auth-token-card login-server-profile" key={profile.id}>
-                  <div className="auth-token-card-heading">
+                <article className="settings-card login-server-profile" key={profile.id}>
+                  <div className="settings-card-heading">
                     <div className="server-profile-title">
                       <b>{profile.name}</b>
-                      <span className={`auth-token-status ${active ? "active" : ""}`}>{active ? "Connected" : "Saved"}</span>
+                      <span className={`settings-card-status ${active ? "active" : ""}`}>{active ? "Connected" : "Saved"}</span>
                     </div>
-                    <div className="auth-token-actions">
+                    <div className="settings-card-actions">
                       {!active && <button className="subtle-button" disabled={busy} onClick={() => void selectServer(profile.id)}>Connect</button>}
                       <button className="subtle-button" disabled={busy} onClick={() => editProfile(profile)}>Edit</button>
                       <button className="subtle-button danger" disabled={busy} onClick={() => void removeProfile(profile)}>Remove</button>

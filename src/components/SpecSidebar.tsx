@@ -118,11 +118,11 @@ export function SpecSidebar({
       </div>
       {specs.length === 0 && <div className="sidebar-empty">{appAvailable ? "Create a spec to get started." : "Connect a server to load specs."}</div>}
       <div className="sidebar-bottom">
-        {appAvailable && <button className={`theme-button auth-token-nav ${notificationsActive ? "selected" : ""}`} onClick={onOpenNotifications}>
+        {appAvailable && <button className={`theme-button sidebar-utility-nav ${notificationsActive ? "selected" : ""}`} onClick={onOpenNotifications}>
           <span aria-hidden="true">♧</span> Notifications
           {notificationCount > 0 && <span className="sidebar-notification-count">{notificationCount > 99 ? "99+" : notificationCount}</span>}
         </button>}
-        <button className={`theme-button auth-token-nav ${settingsActive ? "selected" : ""}`} onClick={onOpenSettings}><span>⚙</span> Settings</button>
+        <button className={`theme-button sidebar-utility-nav ${settingsActive ? "selected" : ""}`} onClick={onOpenSettings}><span>⚙</span> Settings</button>
       </div>
     </aside>
   );

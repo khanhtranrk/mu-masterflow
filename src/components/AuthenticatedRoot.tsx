@@ -127,7 +127,7 @@ function SignInForm({ serverProfile, onManageServers, onRememberAccount, onForge
             <p>Sign in to the account connected to this Convex server.</p>
           </div>
         </header>
-        <div className="auth-token-card auth-server-summary">
+        <div className="auth-server-summary">
           <span>{serverProfile.clientUrl}</span>
           <button type="button" className="subtle-button" onClick={onManageServers}>Change server</button>
         </div>

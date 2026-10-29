@@ -18,11 +18,11 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 ## Code map
 
 - `src/App.tsx`: Convex queries/mutations, page state, and composition of the spec workspace.
-- `src/components/`: spec sidebar/workspace sections, graph, YAML editors, request views, auth-token manager, and dialogs.
+- `src/components/`: spec sidebar/workspace sections, graph, YAML editors, request views, unit-token manager, and dialogs.
 - `src/components/NotificationsView.tsx`: reactive notifications list and read/dismiss actions.
 - `src/systemNotifications.ts`: Tauri/browser notification permission and delivery helpers.
 - `src/specUtils.ts`, `src/types.ts`: shared YAML/graph helpers and frontend data types.
-- `src/App.css`, `src/graph.css`, `src/space-actions.css`, `src/request-details.css`, `src/auth-tokens.css`, `src/notifications.css`, `src/connections.css`, `src/settings.css`, `src/sidebar-connection.css`: UI styles.
+- `src/App.css`, `src/graph.css`, `src/space-actions.css`, `src/request-details.css`, `src/unit-tokens.css`, `src/notifications.css`, `src/connections.css`, `src/settings.css`, `src/sidebar-connection.css`: UI styles.
 - `src/main.tsx`: React root and dynamic Convex connection provider.
 - `src/connectionSettings.ts`: server profile types, URL validation, and native/browser persistence bridge.
 - `src/components/ConnectionController.tsx`: server profile loading, Convex client lifecycle, and first-run connection gate.
@@ -36,7 +36,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `convex/requests.ts`: request creation/list/update and request/node status validators.
 - `convex/units.ts`: unit heartbeat and atomic request claiming.
 - `convex/http.ts`: bearer-authenticated worker HTTP endpoints.
-- `convex/authTokens.ts`: internal auth-token lookup, creation, updates, revocation, and last-used tracking.
+- `convex/unitTokens.ts`: internal unit-token lookup, creation, updates, revocation, and last-used tracking.
 - `convex/notifications.ts`: notification query, read/dismiss mutations, and internal creation.
 - `convex/auth.ts`, `convex/auth.config.ts`: Convex Auth password provider, first-account-only registration, and JWT issuer configuration.
 - `convex/authz.ts`: shared guard used by public application queries and mutations.
@@ -51,7 +51,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 4. **A pipeline is a DAG.** `depends_on` determines edges. Do not flatten pipeline execution into a single ordered step list. Unknown YAML fields and node configuration must survive UI edits.
 5. **Node states are runtime data, not the spec graph.** `nodeStates` is keyed by node name and may contain `status`, `device`, `artifacts`, and `logs`; the UI overlays those states on the YAML pipeline graph.
 6. **Claiming must stay atomic.** `units.claim` selects requests through `by_spec_slug_and_status` and changes `waiting` to `possessed` in the same Convex mutation.
-7. **Worker authorization uses auth tokens.** Worker HTTP hooks validate the bearer token against the token hash in `authTokens`. The desktop manages token metadata through public Convex queries/mutations; token plaintext is generated in the browser and shown only once.
+7. **Unit authorization uses unit tokens.** Worker HTTP hooks validate the bearer token against the token hash in `unitTokens`. The desktop manages token metadata through public Convex queries/mutations; token plaintext is generated in the browser and shown only once.
 8. **Archiving a spec retains its dependent requests.** `specs.remove` sets `deletedAt`; the UI confirms before archiving.
 9. **Use Convex indexes.** Do not scan whole tables with `.collect()` or filter database queries in memory. Add/adjust indexes when adding lookup paths.
 10. **Avoid hard-coded assumptions about pipeline names or workload types.** Specs can define arbitrary pipelines and workloads.
@@ -65,7 +65,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
 - The desktop stores Convex profile names, URLs, remembered account email addresses, and the dark appearance preference in the Tauri app config directory. Profiles include separate client/API and HTTP site URLs; signing out does not remove a profile. The app does not store a Convex admin key or account passwords.
 - Desktop Convex queries/mutations require Convex Auth. Each deployment allows only its first account to register; the backend enforces this during the atomic user-creation mutation, and every authenticated user shares access with no per-user ownership. The client remembers account emails per local server profile but never stores passwords. Worker HTTP hooks remain bearer-token authenticated.
-- Auth-token management is grouped in **Settings → Auth tokens** and uses the Convex client API. Worker HTTP hooks remain under `/hooks/` and use bearer tokens.
+- Unit-token management is grouped in **Settings → Unit tokens** and uses the Convex client API. Worker HTTP hooks remain under `/hooks/` and use bearer tokens.
 - The sidebar shows the selected Convex server and connection state in a badge by the brand. Disconnecting keeps the app shell and Settings available while clearing only the active profile selection.
 - Workers create notifications with `POST /hooks/notifications/send`, using an active bearer token and a JSON `title`, `message`, and optional string-array `tags`. The desktop subscribes to notifications through Convex; its list is newest-first and limited to 100 in the UI.
 - New notifications received while the desktop window is visible and focused use an in-app toast. Notifications received while unfocused use the Tauri system notification plugin when OS permission is granted; the Notifications page is where users request permission. The initial query is treated as existing history, not as newly arrived notifications.

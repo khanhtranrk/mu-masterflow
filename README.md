@@ -6,7 +6,7 @@ Worker notifications are delivered in real time to the Notifications page. When 
 
 The desktop supports email/password sign-in and registration of the first account on the selected Convex server. Each deployment permits only one account; this is enforced by the backend, not just the UI. Public app queries and mutations reject unauthenticated calls. Remembered account emails are stored with their server profile on this device; passwords are never saved. The single account has access to all app data.
 
-The sidebar shows the selected server name in a connection-status badge. **Settings** groups server management, worker auth-token management, account sign-out, and light/dark appearance. Disconnecting returns to Settings with the saved server profiles still available; it does not delete a profile or its remembered email. The selected appearance is persisted with the app's local connection settings.
+The sidebar shows the selected server name in a connection-status badge. **Settings** groups server management, Unit token management, account sign-out, and light/dark appearance. Disconnecting returns to Settings with the saved server profiles still available; it does not delete a profile or its remembered email. The selected appearance is persisted with the app's local connection settings.
 
 ## Start here
 
@@ -26,6 +26,6 @@ Build the frontend with `bunx --bun vite build --configLoader runner` when the e
 
 A spec is stored as one complete YAML string in Convex; there is no separate spaces table. Each request is a separate Convex document keyed by `specSlug` and associated with a `pipelineName`. Request input is stored as `payload`; per-node runtime status, device, artifacts, and logs are stored in `nodeStates`. The pipeline graph is derived from `depends_on` in the YAML. It is not a linear list of sequential steps.
 
-Worker hooks are documented in [docs/worker-hooks.md](docs/worker-hooks.md). Workers use auth tokens managed from **Settings → Auth tokens** through regular Convex queries and mutations. The token manager stores only token hashes; the generated plaintext is shown once when a token is created. Anyone who can sign in to the Convex deployment can manage these tokens.
+Worker hooks are documented in [docs/worker-hooks.md](docs/worker-hooks.md). Units (Workers) use Unit tokens managed from **Settings → Unit tokens** through regular Convex queries and mutations. The token manager stores only token hashes; the generated plaintext is shown once when a token is created. Anyone who can sign in to the Convex deployment can manage these tokens.
 
 The worker hook `POST /hooks/notifications/send` can create a notification for the desktop. See [Worker HTTP hooks](docs/worker-hooks.md) for its request and response contract.

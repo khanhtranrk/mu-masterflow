@@ -9,12 +9,12 @@
  */
 
 import type * as auth from "../auth.js";
-import type * as authTokens from "../authTokens.js";
 import type * as authz from "../authz.js";
 import type * as http from "../http.js";
 import type * as notifications from "../notifications.js";
 import type * as requests from "../requests.js";
 import type * as specs from "../specs.js";
+import type * as unitTokens from "../unitTokens.js";
 import type * as units from "../units.js";
 
 import type {
@@ -25,12 +25,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
-  authTokens: typeof authTokens;
   authz: typeof authz;
   http: typeof http;
   notifications: typeof notifications;
   requests: typeof requests;
   specs: typeof specs;
+  unitTokens: typeof unitTokens;
   units: typeof units;
 }>;
 

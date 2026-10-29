@@ -43,26 +43,26 @@ const authorize = async (
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
 
-  const authToken = await ctx.runQuery(
-    internal.authTokens.getByHash,
+  const unitToken = await ctx.runQuery(
+    internal.unitTokens.getByHash,
     { tokenHash },
   );
 
   const valid = Boolean(
-    authToken &&
-    authToken.deletedAt === undefined &&
+    unitToken &&
+    unitToken.deletedAt === undefined &&
     (
-      authToken.expiresAt === undefined ||
-      authToken.expiresAt > Date.now()
+      unitToken.expiresAt === undefined ||
+      unitToken.expiresAt > Date.now()
     ),
   );
   if (
     valid &&
-    authToken &&
-    (authToken.lastUsedAt === undefined || Date.now() - authToken.lastUsedAt >= 60_000)
+    unitToken &&
+    (unitToken.lastUsedAt === undefined || Date.now() - unitToken.lastUsedAt >= 60_000)
   ) {
-    await ctx.runMutation(internal.authTokens.markUsed, {
-      id: authToken._id,
+    await ctx.runMutation(internal.unitTokens.markUsed, {
+      id: unitToken._id,
       usedAt: Date.now(),
     });
   }
@@ -81,7 +81,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: provide an active worker auth token" },
+        { error: "Unauthorized: provide an active unit token" },
         401,
       );
     }
@@ -148,7 +148,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: provide an active worker auth token" },
+        { error: "Unauthorized: provide an active unit token" },
         401
       );
     }
@@ -254,7 +254,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: provide an active worker auth token" },
+        { error: "Unauthorized: provide an active unit token" },
         401
       );
     }
@@ -310,7 +310,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: provide an active worker auth token" },
+        { error: "Unauthorized: provide an active unit token" },
         401
       );
     }
@@ -447,7 +447,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: provide an active worker auth token" },
+        { error: "Unauthorized: provide an active unit token" },
         401
       );
     }

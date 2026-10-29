@@ -10,7 +10,7 @@ import type { Doc } from "./_generated/dataModel";
 import { requireAuthenticated } from "./authz";
 
 const tokenInfo = v.object({
-  _id: v.id("authTokens"),
+  _id: v.id("unitTokens"),
   _creationTime: v.number(),
   name: v.string(),
   createdAt: v.number(),
@@ -27,7 +27,7 @@ const toTokenInfo = ({
   lastUsedAt,
   expiresAt,
   deletedAt,
-}: Doc<"authTokens">) => ({
+}: Doc<"unitTokens">) => ({
   _id,
   _creationTime,
   name,
@@ -44,7 +44,7 @@ export const getByHash = internalQuery({
   },
   returns: v.union(
     v.object({
-      _id: v.id("authTokens"),
+      _id: v.id("unitTokens"),
       lastUsedAt: v.optional(v.number()),
       deletedAt: v.optional(v.number()),
       expiresAt: v.optional(v.number()),
@@ -54,7 +54,7 @@ export const getByHash = internalQuery({
 
   handler: async (ctx, { tokenHash }) => {
     const token = await ctx.db
-      .query("authTokens")
+      .query("unitTokens")
       .withIndex("by_token_hash", (q) =>
         q.eq("tokenHash", tokenHash),
       )
@@ -75,7 +75,7 @@ export const getByHash = internalQuery({
 
 export const markUsed = internalMutation({
   args: {
-    id: v.id("authTokens"),
+    id: v.id("unitTokens"),
     usedAt: v.number(),
   },
   returns: v.null(),
@@ -97,7 +97,7 @@ export const list = query({
   handler: async (ctx, { includeRevoked }) => {
     await requireAuthenticated(ctx);
     const tokens = await ctx.db
-      .query("authTokens")
+      .query("unitTokens")
       .withIndex("by_deleted_at", (q) =>
         q.eq("deletedAt", undefined),
       )
@@ -107,7 +107,7 @@ export const list = query({
     if (!includeRevoked) return tokens.map(toTokenInfo);
 
     const revoked = await ctx.db
-      .query("authTokens")
+      .query("unitTokens")
       .withIndex("by_deleted_at", (q) =>
         q.gt("deletedAt", 0),
       )
@@ -123,7 +123,7 @@ export const list = query({
 
 export const get = internalQuery({
   args: {
-    id: v.id("authTokens"),
+    id: v.id("unitTokens"),
   },
   returns: v.union(tokenInfo, v.null()),
 
@@ -144,7 +144,7 @@ export const create = mutation({
     tokenHash: v.string(),
     expiresAt: v.optional(v.number()),
   },
-  returns: v.id("authTokens"),
+  returns: v.id("unitTokens"),
 
   handler: async (ctx, { name, tokenHash, expiresAt }) => {
     await requireAuthenticated(ctx);
@@ -163,7 +163,7 @@ export const create = mutation({
       throw new Error("expiresAt must be in the future");
     }
 
-    const id = await ctx.db.insert("authTokens", {
+    const id = await ctx.db.insert("unitTokens", {
       name: name.trim(),
       tokenHash,
       createdAt: Date.now(),
@@ -176,7 +176,7 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
-    id: v.id("authTokens"),
+    id: v.id("unitTokens"),
     name: v.optional(v.string()),
     expiresAt: v.union(v.number(), v.null()),
   },
@@ -209,7 +209,7 @@ export const update = mutation({
 
 export const revoke = mutation({
   args: {
-    id: v.id("authTokens"),
+    id: v.id("unitTokens"),
   },
   returns: v.null(),
 

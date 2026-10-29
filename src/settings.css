@@ -118,18 +118,23 @@
   font-size: 12px;
 }
 
-.settings-auth-tokens {
+.sidebar-utility-nav.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.settings-unit-tokens {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.settings-auth-tokens > .auth-tokens-view {
+.settings-unit-tokens > .unit-tokens-view {
   grid-column: 1 / -1;
   width: 100%;
   padding: 10px 0 0;
 }
 
-.settings-auth-tokens > .auth-tokens-view .view-heading {
+.settings-unit-tokens > .unit-tokens-view .view-heading {
   display: none;
 }
 
@@ -152,7 +157,7 @@
     display: flex;
   }
 
-  .settings-auth-tokens {
+  .settings-unit-tokens {
     display: flex;
   }
 
