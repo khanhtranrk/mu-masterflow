@@ -1,9 +1,14 @@
 import { httpRouter } from "convex/server";
-import { httpAction, type ActionCtx } from "./_generated/server";
+import { env, httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 const http = httpRouter();
-const jsonHeaders = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*" };
+const jsonHeaders = {
+  "content-type": "application/json; charset=utf-8",
+  "access-control-allow-origin": "*",
+  "cache-control": "no-store",
+};
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: jsonHeaders });
 const options = httpAction(async () => new Response(null, { status: 204, headers: {
   "access-control-allow-origin": "*",
@@ -42,7 +47,7 @@ const authorize = async (
     { tokenHash },
   );
 
-  return Boolean(
+  const valid = Boolean(
     authToken &&
     authToken.deletedAt === undefined &&
     (
@@ -50,12 +55,150 @@ const authorize = async (
       authToken.expiresAt > Date.now()
     ),
   );
+  if (
+    valid &&
+    authToken &&
+    (authToken.lastUsedAt === undefined || Date.now() - authToken.lastUsedAt >= 60_000)
+  ) {
+    await ctx.runMutation(internal.authTokens.markUsed, {
+      id: authToken._id,
+      usedAt: Date.now(),
+    });
+  }
+  return valid;
 };
 
+const authorizeTokenAdmin = async (request: Request): Promise<Response | null> => {
+  const configuredKey: unknown = Reflect.get(env, "AUTH_TOKENS_ADMIN_KEY");
+  if (typeof configuredKey !== "string" || new TextEncoder().encode(configuredKey).length < 32) {
+    return json(
+      { error: "Token administration is not configured. Set AUTH_TOKENS_ADMIN_KEY to a secret of at least 32 bytes." },
+      503,
+    );
+  }
+
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ")) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  const supplied = authorization.slice("Bearer ".length);
+  const expected = configuredKey;
+  const encoder = new TextEncoder();
+  const [suppliedDigest, expectedDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(supplied)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  const suppliedBytes = new Uint8Array(suppliedDigest);
+  const expectedBytes = new Uint8Array(expectedDigest);
+  let mismatch = 0;
+  for (let index = 0; index < suppliedBytes.length; index += 1) {
+    mismatch |= suppliedBytes[index] ^ expectedBytes[index];
+  }
+
+  return mismatch === 0 ? null : json({ error: "Unauthorized" }, 401);
+};
+
+const readObjectBody = async (request: Request): Promise<Record<string, unknown>> => {
+  const body: unknown = await request.json();
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("Request body must be an object");
+  }
+  return body as Record<string, unknown>;
+};
+
+http.route({ path: "/hooks/auth-tokens", method: "OPTIONS", handler: options });
+http.route({ pathPrefix: "/hooks/auth-tokens/", method: "OPTIONS", handler: options });
 http.route({ path: "/hooks/units/heartbeat", method: "OPTIONS", handler: options });
 http.route({ path: "/hooks/requests/claim", method: "OPTIONS", handler: options });
 http.route({ path: "/hooks/requests", method: "OPTIONS", handler: options });
 http.route({ pathPrefix: "/hooks/specs/", method: "OPTIONS", handler: options });
+
+http.route({
+  path: "/hooks/auth-tokens",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authorizationError = await authorizeTokenAdmin(request);
+    if (authorizationError) return authorizationError;
+
+    try {
+      const includeRevoked = new URL(request.url).searchParams.get("includeRevoked") === "true";
+      const tokens = await ctx.runQuery(internal.authTokens.list, { includeRevoked });
+      return json({ tokens });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Could not list auth tokens" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/hooks/auth-tokens/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authorizationError = await authorizeTokenAdmin(request);
+    if (authorizationError) return authorizationError;
+
+    try {
+      const body = await readObjectBody(request);
+      if (typeof body.name !== "string") throw new Error("name is required");
+      if (body.expiresAt !== undefined && (typeof body.expiresAt !== "number" || !Number.isFinite(body.expiresAt))) {
+        throw new Error("expiresAt must be a timestamp");
+      }
+      const result = await ctx.runMutation(internal.authTokens.create, {
+        name: body.name,
+        ...(typeof body.expiresAt === "number" && { expiresAt: body.expiresAt }),
+      });
+      return json(result);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Could not create auth token" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/hooks/auth-tokens/update",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authorizationError = await authorizeTokenAdmin(request);
+    if (authorizationError) return authorizationError;
+
+    try {
+      const body = await readObjectBody(request);
+      if (typeof body.id !== "string") throw new Error("id is required");
+      if (body.name !== undefined && typeof body.name !== "string") throw new Error("name must be a string");
+      const expiresAt = body.expiresAt;
+      if (expiresAt === undefined || (expiresAt !== null && (typeof expiresAt !== "number" || !Number.isFinite(expiresAt)))) {
+        throw new Error("expiresAt must be a timestamp or null");
+      }
+      await ctx.runMutation(internal.authTokens.update, {
+        id: body.id as Id<"authTokens">,
+        ...(typeof body.name === "string" && { name: body.name }),
+        expiresAt: typeof expiresAt === "number" ? expiresAt : null,
+      });
+      return json({ ok: true });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Could not update auth token" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/hooks/auth-tokens/revoke",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authorizationError = await authorizeTokenAdmin(request);
+    if (authorizationError) return authorizationError;
+
+    try {
+      const body = await readObjectBody(request);
+      if (typeof body.id !== "string") throw new Error("id is required");
+      await ctx.runMutation(internal.authTokens.revoke, { id: body.id as Id<"authTokens"> });
+      return json({ ok: true });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Could not revoke auth token" }, 400);
+    }
+  }),
+});
 
 http.route({
   path: "/hooks/units/heartbeat",
@@ -63,7 +206,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: configure MASTERFLOW_HOOK_TOKEN" },
+        { error: "Unauthorized: provide an active worker auth token" },
         401
       );
     }
@@ -169,7 +312,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: configure MASTERFLOW_HOOK_TOKEN" },
+        { error: "Unauthorized: provide an active worker auth token" },
         401
       );
     }
@@ -225,7 +368,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: configure MASTERFLOW_HOOK_TOKEN" },
+        { error: "Unauthorized: provide an active worker auth token" },
         401
       );
     }
@@ -362,7 +505,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
       return json(
-        { error: "Unauthorized: configure MASTERFLOW_HOOK_TOKEN" },
+        { error: "Unauthorized: provide an active worker auth token" },
         401
       );
     }

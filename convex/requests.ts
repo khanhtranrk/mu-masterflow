@@ -1,6 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { parse } from "yaml";
 
 const requestStatus = v.union(
@@ -8,9 +7,6 @@ const requestStatus = v.union(
   v.literal("process_failed"), v.literal("artifact_available"),
   v.literal("retrieve_artifact_failed"), v.literal("succeeded"),
 );
-const nodePlanStatus = v.union(v.literal("queue"), v.literal("running"), v.literal("failed"), v.literal("succeeded"));
-const nodePlanEntry = v.object({  });
-
 export const list = query({
   args: { specSlug: v.string() },
   returns: v.array(v.any()),
@@ -45,7 +41,7 @@ export const create = mutation({
     return ctx.db.insert("requests", {
       ...requestArgs,
       pipelineName,
-      status: "waitting"
+      status: "waiting"
     });
   },
 });

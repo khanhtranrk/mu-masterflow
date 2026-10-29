@@ -6,6 +6,10 @@ const labels: Record<string, string> = {
   artifact_available: "Artifact available",
   retrieve_artifact_failed: "Artifact retrieval failed",
   succeeded: "Succeeded",
+  queue: "Queued",
+  running: "Running",
+  failed: "Failed",
+  not_reported: "Not reported",
 };
 
 export function Status({ status }: { status: string }) {

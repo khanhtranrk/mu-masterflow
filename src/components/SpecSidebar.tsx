@@ -1,12 +1,14 @@
 import type { SpecItem } from "../types";
 
-type SpaceSidebarProps = {
+type SpecSidebarProps = {
   specs: SpecItem[];
   activeSpec?: SpecItem;
   connected: boolean;
   dark: boolean;
-  spaceMenuSlug: string | null;
+  specMenuSlug: string | null;
+  authTokensActive: boolean;
   onCreate: () => void;
+  onOpenAuthTokens: () => void;
   onOpen: (spec: SpecItem) => void;
   onToggleMenu: (slug: string) => void;
   onRename: (spec: SpecItem) => void;
@@ -14,19 +16,21 @@ type SpaceSidebarProps = {
   onToggleTheme: () => void;
 };
 
-export function SpaceSidebar({
+export function SpecSidebar({
   specs,
   activeSpec,
   connected,
   dark,
-  spaceMenuSlug,
+  specMenuSlug,
+  authTokensActive,
   onCreate,
+  onOpenAuthTokens,
   onOpen,
   onToggleMenu,
   onRename,
   onDelete,
   onToggleTheme,
-}: SpaceSidebarProps) {
+}: SpecSidebarProps) {
   return (
     <aside className="space-sidebar">
       <div className="desktop-brand">
@@ -35,7 +39,7 @@ export function SpaceSidebar({
         <span className={connected ? "connection-dot connected" : "connection-dot"} title={connected ? "Connected to Convex" : "Connecting to Convex"} />
       </div>
       <button className="new-space-button" onClick={onCreate}><span>＋</span> New spec</button>
-      <div className="spaces-heading">SPACES <span>{specs.length}</span></div>
+      <div className="spaces-heading">SPECS <span>{specs.length}</span></div>
       <div className="space-list">
         {specs.map((spec) => {
           const selected = activeSpec?.slug === spec.slug;
@@ -45,20 +49,21 @@ export function SpaceSidebar({
                 <span className={`space-mark ${spec.color}`}>{spec.name.slice(0, 1).toUpperCase()}</span>
                 <span className="space-name">{spec.name}</span>
               </button>
-              <button className="space-menu-trigger" aria-label={`Actions for ${spec.name}`} title="Space actions" onClick={() => onToggleMenu(spec.slug)}>···</button>
-              {spaceMenuSlug === spec.slug && (
+              <button className="space-menu-trigger" aria-label={`Actions for ${spec.name}`} title="Spec actions" onClick={() => onToggleMenu(spec.slug)}>···</button>
+              {specMenuSlug === spec.slug && (
                 <div className="space-menu">
                   <button onClick={() => onRename(spec)}>Rename</button>
-                  <button className="danger" onClick={() => onDelete(spec)}>Delete space</button>
+                  <button className="danger" onClick={() => onDelete(spec)}>Archive spec</button>
                 </div>
               )}
             </div>
           );
         })}
       </div>
-      {specs.length === 0 && <div className="sidebar-empty">Create a spec to start a space.</div>}
+      {specs.length === 0 && <div className="sidebar-empty">Create a spec to get started.</div>}
       <div className="sidebar-bottom">
         <div className="sidebar-status">{connected ? "Convex connected" : "Connecting to Convex"}</div>
+        <button className={`theme-button auth-token-nav ${authTokensActive ? "selected" : ""}`} onClick={onOpenAuthTokens}><span>⌘</span> Auth tokens</button>
         <button className="theme-button" onClick={onToggleTheme}><span>{dark ? "☼" : "☾"}</span> {dark ? "Light appearance" : "Dark appearance"}</button>
       </div>
     </aside>

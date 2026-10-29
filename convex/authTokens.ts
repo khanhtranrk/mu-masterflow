@@ -22,6 +22,8 @@ export const getByHash = internalQuery({
   },
   returns: v.union(
     v.object({
+      _id: v.id("authTokens"),
+      lastUsedAt: v.optional(v.number()),
       deletedAt: v.optional(v.number()),
       expiresAt: v.optional(v.number()),
     }),
@@ -41,9 +43,26 @@ export const getByHash = internalQuery({
     }
 
     return {
+      _id: token._id,
+      lastUsedAt: token.lastUsedAt,
       deletedAt: token.deletedAt,
       expiresAt: token.expiresAt,
     };
+  },
+});
+
+export const markUsed = internalMutation({
+  args: {
+    id: v.id("authTokens"),
+    usedAt: v.number(),
+  },
+  returns: v.null(),
+
+  handler: async (ctx, { id, usedAt }) => {
+    const token = await ctx.db.get(id);
+    if (!token || token.deletedAt !== undefined) return null;
+    await ctx.db.patch(id, { lastUsedAt: usedAt });
+    return null;
   },
 });
 

@@ -1,11 +1,14 @@
+import { useEffect, useState } from "react";
 import type { PipelineNode, RequestItem } from "../types";
 import { DependencyGraph } from "./DependencyGraph";
 import { Status } from "./Status";
+import type { UnitItem } from "../types";
 
 type RequestsViewProps = {
   pipelineNames: string[];
   currentPipelineName: string;
   requests: RequestItem[];
+  units: UnitItem[];
   activeRequest?: RequestItem;
   activeRequestPipelineNodes: PipelineNode[];
   selectedRequest: string | null;
@@ -18,6 +21,7 @@ export function RequestsView({
   pipelineNames,
   currentPipelineName,
   requests,
+  units,
   activeRequest,
   activeRequestPipelineNodes,
   selectedRequest,
@@ -25,6 +29,26 @@ export function RequestsView({
   onSelectRequest,
   onNewRequest,
 }: RequestsViewProps) {
+  const [selectedNode, setSelectedNode] = useState("");
+  const activeNodes = activeRequest?.nodeStates ?? {};
+  const activeNodeNames = activeRequestPipelineNodes.map((node) => String(node.name));
+  const activeNode = activeNodeNames.includes(selectedNode) ? selectedNode : activeNodeNames[0] ?? "";
+  const selectedNodeState = activeNodes[activeNode];
+  const activeUnit = activeRequest?.unitId ? units.find((unit) => unit.unitId === activeRequest.unitId) : undefined;
+
+  useEffect(() => {
+    const runningNode = Object.entries(activeRequest?.nodeStates ?? {}).find(([, state]) => state.status === "running")?.[0];
+    setSelectedNode(runningNode ?? activeRequestPipelineNodes[0]?.name ?? "");
+  }, [activeRequest?.convexId]);
+
+  const payloadEntries = (payload: unknown) =>
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? Object.entries(payload as Record<string, unknown>)
+      : [];
+
+  const displayValue = (value: unknown) =>
+    typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+
   return (
     <section className="editor-view requests-view">
       <div className="view-heading">
@@ -47,11 +71,10 @@ export function RequestsView({
               <span className="request-icon">▤</span>
               <span className="request-copy">
                 <b>{request.title}</b>
-                <small>{request.id} · {Object.entries(request.params).map(([key, value]) => `${key}: ${String(value)}`).slice(0, 2).join(" · ") || "No parameters"}</small>
+                <small>{request.id} · {payloadEntries(request.payload).map(([key, value]) => `${key}: ${displayValue(value)}`).slice(0, 2).join(" · ") || "No payload fields"}</small>
               </span>
               <Status status={request.status} />
-              <span className="request-stage">{request.node}</span>
-              <span className="request-progress"><i><b className={request.status} style={{ width: `${request.progress}%` }} /></i>{request.progress}%</span>
+              <span className="request-stage">{Object.entries(request.nodeStates).find(([, state]) => state.status === "running")?.[0] ?? "—"}</span>
               <span className="request-chevron">{selectedRequest === request.convexId ? "⌄" : "›"}</span>
             </button>
           ))}
@@ -65,13 +88,63 @@ export function RequestsView({
       {activeRequest && (
         <div className="request-detail">
           <div><b>{activeRequest.title}</b><Status status={activeRequest.status} /></div>
-          <p>Current step: {activeRequest.node} · {activeRequest.unit}</p>
+          <p>{activeRequest.id} · Created {new Date(activeRequest.createdAt).toLocaleString()}</p>
           <div className="request-params">
-            {Object.entries(activeRequest.params).map(([key, value]) => <span key={key}><small>{key}</small>{String(value)}</span>)}
+            {payloadEntries(activeRequest.payload).map(([key, value]) => <span key={key}><small>{key}</small>{displayValue(value)}</span>)}
+            {payloadEntries(activeRequest.payload).length === 0 && <span><small>Payload</small>{displayValue(activeRequest.payload)}</span>}
           </div>
-          <div className="request-plan-view">
-            <b>Pipeline execution · {activeRequest.pipelineName ?? pipelineNames[0] ?? "pipeline"}</b>
-            <DependencyGraph nodes={activeRequestPipelineNodes} selected={activeRequest.node} onSelect={() => undefined} plan={activeRequest.plan} readOnly />
+          <div className="request-execution-view">
+            <b>Pipeline execution · {activeRequest.pipelineName || pipelineNames[0] || "pipeline"}</b>
+            <DependencyGraph
+              nodes={activeRequestPipelineNodes}
+              selected={activeNode}
+              onSelect={setSelectedNode}
+              nodeStates={activeNodes}
+              interactive
+            />
+            {activeNode && (
+              <div className="request-node-detail">
+                <div className="request-node-heading">
+                  <b>{activeNode}</b>
+                  <Status status={selectedNodeState?.status ?? "not_reported"} />
+                </div>
+                {selectedNodeState?.device && (
+                  <p className="request-node-device">Device · {selectedNodeState.device.family} {selectedNodeState.device.index}</p>
+                )}
+                {selectedNodeState?.artifacts && Object.keys(selectedNodeState.artifacts).length > 0 && (
+                  <div className="request-node-section">
+                    <b>Artifacts</b>
+                    {Object.entries(selectedNodeState.artifacts).map(([name, artifact]) => (
+                      <div className="request-artifact" key={name}><small>{name}</small><code>{artifact}</code></div>
+                    ))}
+                  </div>
+                )}
+                {selectedNodeState?.logs && selectedNodeState.logs.length > 0 && (
+                  <div className="request-node-section">
+                    <b>Logs</b>
+                    <ol className="request-node-logs">{selectedNodeState.logs.map((log, index) => <li key={`${index}-${log}`}>{log}</li>)}</ol>
+                  </div>
+                )}
+                {!selectedNodeState && <p className="request-node-empty">No runtime state has been reported for this node.</p>}
+              </div>
+            )}
+          </div>
+          <div className="request-unit-detail">
+            <b>Worker</b>
+            {activeRequest.unitId ? (
+              activeUnit ? (
+                <>
+                  <div className="request-unit-heading"><span>{activeUnit.unitId}</span><Status status={activeUnit.status} /></div>
+                  <p>{activeUnit.unitType} · Last seen {new Date(activeUnit.lastSeen).toLocaleString()}</p>
+                  <small>{activeUnit.workingDir || "No working directory reported"}</small>
+                  <div className="request-unit-devices">
+                    {activeUnit.devices.length > 0
+                      ? activeUnit.devices.map((device) => <span key={`${device.family}-${device.index}`}>{device.family} · {device.index}</span>)
+                      : <span>No devices reported</span>}
+                  </div>
+                </>
+              ) : <p>{activeRequest.unitId} · Worker details unavailable</p>
+            ) : <p>Not assigned to a worker yet.</p>}
           </div>
         </div>
       )}

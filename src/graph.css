@@ -28,10 +28,9 @@
 .dark .graph-node.execution-running { background: #2b2938; }
 .dark .graph-node.execution-failed { background: #352524; }
 .dark .graph-node.execution-succeeded { background: #24332a; }
-.request-plan-view { margin-top: 14px; }
-.request-plan-view> b { display: block; margin-bottom: 9px; color: var(--muted); font-size: 9px; font-weight: 620; }
-.request-plan-view .graph-viewport { min-height: 180px; max-height: 320px; border: 1px solid var(--line); border-radius: 8px; }
-.request-plan-view .graph-node { pointer-events: none; }
+.request-execution-view { margin-top: 14px; }
+.request-execution-view> b { display: block; margin-bottom: 9px; color: var(--muted); font-size: 9px; font-weight: 620; }
+.request-execution-view .graph-viewport { min-height: 180px; max-height: 320px; border: 1px solid var(--line); border-radius: 8px; }
 .graph-node-index { position: absolute; top: 12px; left: 11px; width: 17px; height: 17px; border-radius: 5px; display: grid; place-items: center; background: var(--soft); color: var(--muted); font: 8px "SFMono-Regular", Consolas, monospace; }
 .graph-node>b { max-width: 100%; font-size: 10px; font-weight: 630; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .graph-node>small { max-width: 100%; color: var(--accent); font-size: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

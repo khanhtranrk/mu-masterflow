@@ -4,9 +4,9 @@ Read this file before changing the app. It is the durable handoff for agents con
 
 ## Product intent
 
-MasterFlow is the desktop control surface for Mu workers. A user creates or uploads a complete `spec.yaml`; that spec becomes a space. Within a space, the user edits any supported spec sections, defines one or more pipelines as dependency graphs, and creates requests for a chosen pipeline. Workers communicate through authenticated Convex HTTP hooks. MasterFlow shows worker and request state reactively.
+MasterFlow is the desktop control surface for Mu workers. A user creates or uploads a complete `spec.yaml` as a spec, edits supported sections, defines one or more pipelines as dependency graphs, and creates requests for a chosen pipeline. Workers communicate through authenticated Convex HTTP hooks. MasterFlow shows worker and per-node request state reactively.
 
-Keep the app calm and focused: persistent left sidebar for spaces, selected space content on the right, simple light/dark appearance, and visible request execution graph. Do not bring back a complex dashboard or a wizard-heavy workflow without a direct request.
+Keep the app calm and focused: persistent left sidebar for specs, selected spec content on the right, simple light/dark appearance, and visible request execution graph. Do not bring back a complex dashboard or a wizard-heavy workflow without a direct request.
 
 ## Read these docs for detail
 
@@ -17,53 +17,56 @@ Keep the app calm and focused: persistent left sidebar for spaces, selected spac
 
 ## Code map
 
-- `src/App.tsx`: Convex queries/mutations, page state, and composition of the space workspace.
-- `src/components/`: sidebar, workspace sections, graph, YAML editors, request views, and dialogs.
+- `src/App.tsx`: Convex queries/mutations, page state, and composition of the spec workspace.
+- `src/components/`: spec sidebar/workspace sections, graph, YAML editors, request views, auth-token manager, and dialogs.
 - `src/specUtils.ts`, `src/types.ts`: shared YAML/graph helpers and frontend data types.
-- `src/App.css`, `src/graph.css`, `src/space-actions.css`: UI styles and graph/action-menu presentation.
+- `src/App.css`, `src/graph.css`, `src/space-actions.css`, `src/request-details.css`, `src/auth-tokens.css`: UI styles.
 - `src/main.tsx`: React root and Convex client provider.
 - `convex/schema.ts`: Convex tables and indexes.
-- `convex/specs.ts`: spec/space queries and mutations, YAML retrieval, legacy execution-contract migration.
+- `convex/specs.ts`: spec queries and mutations, YAML retrieval, archive handling.
 - `convex/requests.ts`: request creation/list/update and request/node status validators.
 - `convex/units.ts`: unit heartbeat and atomic request claiming.
-- `convex/http.ts`: bearer-authenticated worker HTTP endpoints.
+- `convex/http.ts`: bearer-authenticated worker endpoints and admin-key-protected token-management endpoints.
+- `convex/authTokens.ts`: internal auth-token lookup, creation, updates, revocation, and last-used tracking.
 - `src-tauri/`: Tauri v2 desktop wrapper and window config.
 - `README.md`: repository entry point.
 
 ## Data model and invariants
 
 1. **The complete YAML is authoritative.** Store it as `specs.yaml`. Do not recreate parallel `params` or `nodes` fields on `specs`; the YAML can contain arbitrary sections and node configuration.
-2. **A spec is a space.** Its stable `slug` is used by requests and workers. A display rename changes `name` only and must keep `slug` stable.
-3. **A request belongs to one spec and one pipeline.** Store each request as a separate `requests` document with `specSlug`, `pipelineName`, user `params`, execution `status`, and worker `plan`.
+2. **Specs are the only configuration records.** There is no `spaces` table. Their stable `slug` is used by requests and workers; rename changes `name` only.
+3. **A request belongs to one spec and one pipeline.** Store each request as a separate `requests` document with `specSlug`, `pipelineName`, `payload`, execution `status`, optional `unitId`, and per-node `nodeStates`.
 4. **A pipeline is a DAG.** `depends_on` determines edges. Do not flatten pipeline execution into a single ordered step list. Unknown YAML fields and node configuration must survive UI edits.
-5. **The worker plan is runtime state, not the spec graph.** `plan` reports each node's current state and optional device; the UI overlays those states on the graph defined by the spec.
+5. **Node states are runtime data, not the spec graph.** `nodeStates` is keyed by node name and may contain `status`, `device`, `artifacts`, and `logs`; the UI overlays those states on the YAML pipeline graph.
 6. **Claiming must stay atomic.** `units.claim` selects requests through `by_spec_slug_and_status` and changes `waiting` to `possessed` in the same Convex mutation.
-7. **Preserve worker authorization.** A unit must have heartbeat-registered the requested `specSlug` before claiming from it. Heartbeat accepts optional `specSlugs`, but an omitted list means that unit cannot claim any spec.
-8. **Deletion owns its dependent records.** Deleting a spec removes its matching space records and request records and clears deleted active request IDs from units. The UI confirms first. The current delete mutation caps a single space at 500 requests and returns an error above that limit.
+7. **Worker authorization uses auth tokens.** Worker HTTP hooks validate the bearer token against the token hash in `authTokens`. Management HTTP routes require the separate server-only `AUTH_TOKENS_ADMIN_KEY`; do not expose token CRUD as public Convex functions.
+8. **Archiving a spec retains its dependent requests.** `specs.remove` sets `deletedAt`; the UI confirms before archiving.
 9. **Use Convex indexes.** Do not scan whole tables with `.collect()` or filter database queries in memory. Add/adjust indexes when adding lookup paths.
 10. **Avoid hard-coded assumptions about pipeline names or workload types.** Specs can define arbitrary pipelines and workloads.
 
 ## Current API/status contract
 
 - Request statuses: `waiting`, `possessed`, `processing`, `process_failed`, `artifact_available`, `retrieve_artifact_failed`, `succeeded`.
-- Node plan statuses: `queue`, `running`, `failed`, `succeeded`.
-- Claim persists `possessed` but returns `status: "received"` for compatibility with the worker response example.
-- Worker update may merge additional runtime/technical information under `technical`; keep extensibility there instead of adding rigid one-off fields.
+- Node-state statuses: `queue`, `running`, `failed`, `succeeded`.
+- Request creation accepts `specSlug`, `pipelineName`, and `payload`.
+- Worker reports use `POST /hooks/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.
+- Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
+- Auth-token management uses `GET /hooks/auth-tokens` and `POST` routes under `/hooks/auth-tokens/`; the root route and child routes both need matching `OPTIONS` handlers for browser CORS preflight.
 - Hook routes and exact JSON contracts are in [docs/worker-hooks.md](docs/worker-hooks.md).
 
 ## Compatibility note
 
-`requests.nodeStates` and several old unit fields are still optional in `convex/schema.ts` for older data. New execution state must use `requests.plan` and the new unit fields. `specs.migrateExecutionContract` is a one-time backfill; do not remove the legacy schema fields or run a destructive migration until current Convex data has been inspected and the backfill is confirmed complete.
+Request node states include optional `device`, `artifacts`, and `logs` per node. Unit documents currently store `unitId`, `unitType`, `status`, `workingDir`, `devices`, and `lastSeen`.
 
 ## Working safely
 
 - Before editing any file in `convex/`, consult the Convex skill and preserve the object-form function syntax, argument validators, return validators, index use, and internal/public boundaries.
 - Keep UI state changes and mutations reactive through `useQuery`/`useMutation`; do not copy server state into a disconnected local store.
-- Do not expose the worker bearer token in frontend code, logs, docs, or committed env files.
-- Do not delete or rename a user space as part of a test. Use a disposable spec and clean it up.
-- If changing request status shapes or stored fields, update validators, migration/backfill logic, HTTP validation, frontend status labels, and docs together.
+- Do not expose worker or admin bearer secrets in source code, logs, screenshots, docs, or committed env files. The docs may describe the authorization header using placeholders only.
+- Do not delete or rename a user spec as part of a test. Use a disposable spec and clean it up.
+- If changing request status shapes or stored fields, update schema and function validators, HTTP validation, frontend status labels, and docs together.
 - Run `bunx --bun tsc --noEmit` and `bunx --bun vite build --configLoader runner` after relevant changes. If Convex is available, use `bunx --bun convex run <module:function> '<json args>' --push` to sync and verify development functions. Do not claim a Convex deployment test if the backend was unavailable.
 
 ## Local environment
 
-`.env.local` is local configuration and must not be committed. The current project uses a local anonymous Convex development deployment. `VITE_CONVEX_URL` connects the desktop UI; `VITE_CONVEX_SITE_URL` is the HTTP site origin for worker hooks. See [docs/development.md](docs/development.md).
+`.env.local` is local configuration and must not be committed. This checkout is configured for a self-hosted Convex deployment. `VITE_CONVEX_URL` is the client/API origin; `VITE_CONVEX_SITE_URL` is the HTTP actions origin for worker hooks and token administration. Keep `AUTH_TOKENS_ADMIN_KEY` in the Convex deployment environment, never in Vite variables. See [docs/development.md](docs/development.md).

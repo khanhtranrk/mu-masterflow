@@ -1,7 +1,7 @@
 import type { ConfigTab, SpecItem } from "../types";
 import { tabs } from "../specUtils";
 
-type SpaceHeaderProps = {
+type SpecHeaderProps = {
   spec: SpecItem;
   dirty: boolean;
   saving: boolean;
@@ -11,7 +11,7 @@ type SpaceHeaderProps = {
   onNewRequest: () => void;
 };
 
-export function SpaceHeader({ spec, dirty, saving, error, hasPipeline, onSave, onNewRequest }: SpaceHeaderProps) {
+export function SpecHeader({ spec, dirty, saving, error, hasPipeline, onSave, onNewRequest }: SpecHeaderProps) {
   return (
     <header className="work-header">
       <div className="space-heading">
@@ -37,7 +37,7 @@ export function SectionTabs({
   onChange: (tab: ConfigTab) => void;
 }) {
   return (
-    <nav className="section-tabs" aria-label="Space sections">
+    <nav className="section-tabs" aria-label="Spec sections">
       {tabs.map((tab) => (
         <button key={tab.id} className={activeTab === tab.id ? "active" : ""} onClick={() => onChange(tab.id)}>
           {tab.label}

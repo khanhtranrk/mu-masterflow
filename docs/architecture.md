@@ -18,64 +18,71 @@ The app is a Tauri v2 desktop shell around a web frontend. Convex is the shared 
 
 ## Tables
 
+The desktop connects to the Convex client/API URL for realtime data. Worker hooks and the auth-token manager connect to the Convex HTTP actions/site URL. These URLs are different on a self-hosted installation.
+
 ### `specs`
 
-One document per spec/space. Fields are `slug`, display `name`, `description`, raw `yaml`, and `enabled`. `slug` has the `by_slug` index and is a stable identifier shared with workers and requests. Rename changes `name` only.
+One document per spec. Fields are `slug`, display `name`, `description`, raw `yaml`, `enabled`, and optional `deletedAt`. `slug` has the `by_slug` index and is a stable identifier shared with workers and requests. Rename changes `name` only. Archived specs are hidden from the normal list; their requests are retained.
 
-The YAML string is authoritative. Do not denormalize pipeline params or nodes into other spec fields. This preserves arbitrary sections and node options.
-
-### `spaces`
-
-Display-space records with `specSlug` and `name`, indexed by `by_spec_slug`. Normally one record exists per spec. `specs.create` creates it, `specs.rename` keeps it synchronized, and `specs.remove` deletes it.
+The YAML string is authoritative. Do not denormalize pipeline params or nodes into other spec fields. This preserves arbitrary sections and node options. There is no separate `spaces` table.
 
 ### `requests`
 
-One document per submitted run/request. Main fields include `specSlug`, optional `pipelineName`, `title`, `status`, arbitrary `params`, merged `technical` metadata, `plan`, optional `currentNode` and `unitId`, and `progress`.
+One document per submitted run/request. Fields are `specSlug`, `pipelineName`, `status`, arbitrary `payload`, optional `nodeStates`, optional `unitId`, and optional `claimedAt`. The UI submits the pipeline parameter values as `payload`; node runtime information is keyed by node name in `nodeStates`.
 
-Indexes: `by_spec_slug`, `by_spec_slug_and_status`, `by_status`, `by_unit_id`. Claim uses `by_spec_slug_and_status` to select waiting requests atomically.
+Indexes: `by_spec_slug`, `by_spec_slug_and_status`, and `by_status`. Claim uses `by_spec_slug_and_status` to select waiting requests atomically.
 
 ### `units`
 
-One document per worker `unitId`, including `status`, `lastSeen`, allowed `specSlugs`, workloads, `unitType`, `workingDir`, `devices`, metadata, and active `currentRequestIds`. Indexes include `by_unit_id` and `by_status`.
+One document per worker `unitId`, including `unitType`, `status` (`online` or `offline`), `workingDir`, `devices` (`family` and `index`), and `lastSeen`. Indexes include `by_unit_id` and `by_status`.
+
+### `authTokens`
+
+Stores token `name`, `tokenHash`, `createdAt`, optional `lastUsedAt`, `expiresAt`, and `deletedAt`. Plaintext is returned only when a token is created; worker requests are authorized against the stored hash. Management HTTP routes require the separate server-side `AUTH_TOKENS_ADMIN_KEY`.
 
 ## Main flows
 
-### Create a space
+### Create a spec
 
-The desktop accepts a complete YAML document, validates that its root is a mapping, derives a slug from the display name, then calls `specs.create`. Convex stores raw YAML and creates the corresponding `spaces` record.
+The desktop accepts a complete YAML document, validates that its root is a mapping, derives a slug from the display name, then calls `specs.create`. Convex stores raw YAML in the `specs` table.
 
-### Edit a space
+### Edit a spec
 
-`src/App.tsx` edits a YAML draft. Pipeline editing changes only the selected pipeline portion of the parsed document and serializes the full document back to YAML, preserving unrelated sections. Saving calls `specs.update` with YAML, description, and name.
+The desktop edits a YAML draft. Pipeline editing changes only the selected pipeline portion of the parsed document and serializes the full document back to YAML, preserving unrelated sections. Saving calls `specs.update` with YAML, description, and name.
 
-### Rename a space
+### Rename a spec
 
-`specs.rename` patches `specs.name` and synchronizes all `spaces` records for that stable slug. It intentionally does not change slug, YAML, or requests.
+`specs.rename` patches `specs.name`. It intentionally does not change slug, YAML, or requests.
 
-### Delete a space
+### Archive a spec
 
-`specs.remove` deletes up to 500 associated request docs in one mutation, clears those request IDs from registered units, deletes space docs, then deletes the spec. More than 500 requests causes an error without partial deletion. The UI confirms first.
+`specs.remove` sets `deletedAt`; it does not delete associated requests. The UI confirms before archiving.
 
 ### Create and run requests
 
-The UI creates a request with `status: "waiting"`, chosen `pipelineName`, and params. A worker heartbeat registers the unit and allowed spec slugs. `units.claim` atomically marks requests `possessed`; `requests.updateFromWorker` updates request status and node `plan`. Convex queries update the UI reactively.
+The UI creates a request with a chosen `pipelineName` and parameter `payload`. A worker heartbeat registers its current unit fields. `units.claim` atomically marks waiting requests `possessed`; the worker reports request and per-node states through the hook, persisted as `status` and `nodeStates`. Convex queries update the UI reactively.
 
 ## Frontend map
 
-- `src/App.tsx`: space navigation/actions, spec editor, pipeline editor and graph, request list/details, runtime plan overlay.
+- `src/App.tsx`: spec navigation/actions, spec editor, pipeline editor and graph, request list/details, runtime node-state overlay.
 - `src/App.css`: base design and light/dark styling.
 - `src/graph.css`: dependency graph and per-node execution styles.
-- `src/space-actions.css`: sidebar kebab menu and rename/delete actions.
+- `src/space-actions.css`: sidebar spec actions.
+- `src/request-details.css`: request node-state, artifact, log, and unit details.
+- `src/auth-tokens.css`: auth-token administration UI.
 - `src/main.tsx`: Convex client initialization and provider.
 
 ## Backend map
 
 - `convex/schema.ts`: table validators and indexes.
-- `convex/specs.ts`: spec/space CRUD, internal YAML query, compatibility migration.
-- `convex/requests.ts`: request creation/list/update validators and terminal-unit cleanup.
+- `convex/specs.ts`: spec CRUD and internal YAML query.
+- `convex/requests.ts`: request creation/list/update and node-state reporting.
 - `convex/units.ts`: heartbeat and atomic claim.
-- `convex/http.ts`: bearer auth, CORS, hook payload validation, HTTP responses.
+- `convex/http.ts`: bearer auth, CORS/preflight, worker hooks, and admin-key-protected token-management HTTP routes.
+- `convex/authTokens.ts`: internal token lookup and management functions.
 
-## Compatibility debt
+Auth-token CRUD functions remain internal. The desktop calls the HTTP actions under `/hooks/auth-tokens`; those routes require the server-side `AUTH_TOKENS_ADMIN_KEY`. Worker requests use tokens stored as hashes in `authTokens`. The plaintext token is returned once at creation and is never available to list/get operations.
 
-The schema still accepts legacy `requests.nodeStates`, `units.device`, and `units.currentRequestId` for older documents. New worker/frontend writes should use `plan`, `devices`, and `currentRequestIds`. `specs.migrateExecutionContract` is defined but should only be run after inspecting deployed data and confirming it is appropriate. Keep old fields until backfill completion is verified.
+## Runtime node states
+
+Each `requests.nodeStates` entry is keyed by node name and may contain `status`, `device`, `artifacts`, and `logs`. The UI overlays these states on the graph defined in the spec YAML and exposes the selected node's reported details.

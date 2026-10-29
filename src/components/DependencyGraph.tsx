@@ -1,12 +1,13 @@
-import type { PipelineNode, RequestItem } from "../types";
+import type { NodeExecutionState, PipelineNode } from "../types";
 import { asObject, layoutGraph, nodeDependencyNames } from "../specUtils";
 
 type DependencyGraphProps = {
   nodes: PipelineNode[];
   selected: string;
   onSelect: (name: string) => void;
-  plan?: RequestItem["plan"];
+  nodeStates?: Record<string, NodeExecutionState>;
   readOnly?: boolean;
+  interactive?: boolean;
 };
 
 const nodeLabels: Record<string, string> = {
@@ -17,10 +18,10 @@ const nodeLabels: Record<string, string> = {
   not_started: "Not started",
 };
 
-export function DependencyGraph({ nodes, selected, onSelect, plan = [], readOnly = false }: DependencyGraphProps) {
+export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnly = false, interactive = !readOnly }: DependencyGraphProps) {
   const { positions, width, height } = layoutGraph(nodes);
   const validNames = new Set(nodes.map((node) => String(node.name)));
-  const planByNode = new Map(plan.map((item) => [item.nodeName, item]));
+  const runtimeView = nodeStates !== undefined || readOnly;
 
   return (
     <div className="graph-viewport">
@@ -45,19 +46,19 @@ export function DependencyGraph({ nodes, selected, onSelect, plan = [], readOnly
           const run = node.run;
           const workload = asObject(run).workload;
           const runLabel = typeof workload === "string" ? workload : Array.isArray(run) ? `${run.length} actions` : run ? "Custom run" : "No run defined";
-          const execution = planByNode.get(name);
-          const nodeStatus = execution?.status ?? (plan.length ? "not_started" : "");
+          const execution = nodeStates?.[name];
+          const nodeStatus = execution?.status ?? (runtimeView ? "not_started" : "");
 
           return (
             <div
               key={`${name}-${index}`}
-              className={`graph-node ${name === selected ? "selected" : ""} ${nodeStatus ? `execution-${nodeStatus}` : ""} ${readOnly ? "read-only" : ""}`}
+              className={`graph-node ${name === selected ? "selected" : ""} ${nodeStatus ? `execution-${nodeStatus}` : ""} ${interactive ? "" : "read-only"}`}
               style={{ left: position.x, top: position.y }}
-              onClick={() => !readOnly && onSelect(name)}
-              role={readOnly ? undefined : "button"}
-              tabIndex={readOnly ? undefined : 0}
+              onClick={() => interactive && onSelect(name)}
+              role={interactive ? "button" : undefined}
+              tabIndex={interactive ? 0 : undefined}
               onKeyDown={(event) => {
-                if (!readOnly && (event.key === "Enter" || event.key === " ")) {
+                if (interactive && (event.key === "Enter" || event.key === " ")) {
                   event.preventDefault();
                   onSelect(name);
                 }
@@ -65,11 +66,11 @@ export function DependencyGraph({ nodes, selected, onSelect, plan = [], readOnly
             >
               <span className="graph-node-index">{String(index + 1).padStart(2, "0")}</span>
               <b>{name}</b>
-              <small>{readOnly ? nodeLabels[nodeStatus] ?? "Not reported" : runLabel}</small>
+              <small>{runtimeView ? nodeLabels[nodeStatus] ?? "Not reported" : runLabel}</small>
               <span className="graph-node-meta">
-                {readOnly && execution?.device
+                {runtimeView && execution?.device
                   ? `${execution.device.family ?? "device"} · ${execution.device.index ?? "?"}`
-                  : nodeDependencyNames(node).length ? `← ${nodeDependencyNames(node).length} dependencies` : "Independent node"}
+                  : runtimeView ? "No device reported" : nodeDependencyNames(node).length ? `← ${nodeDependencyNames(node).length} dependencies` : "Independent node"}
               </span>
             </div>
           );

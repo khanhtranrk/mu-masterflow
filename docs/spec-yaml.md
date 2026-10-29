@@ -39,9 +39,9 @@ This is a structural example only. Keep real spec conditions and commands intact
 
 ## UI graph behavior
 
-`DependencyGraph` derives nodes from the selected pipeline's `nodes` array and edges from each node's `depends_on`. In the editor, the graph opens a full YAML node inspector. In request details, it overlays the runtime `plan` on the graph defined by that request's spec pipeline.
+`DependencyGraph` derives nodes from the selected pipeline's `nodes` array and edges from each node's `depends_on`. In the editor, the graph opens a full YAML node inspector. In request details, it overlays `requests.nodeStates` on the graph defined by that request's spec pipeline. Selecting a node shows its status, reported device, artifacts, and logs.
 
-Runtime node states are `queue`, `running`, `failed`, and `succeeded`. If a plan does not report a node, request detail shows it as not started/not reported. Plan `nodeName` values should match YAML node names for overlays to line up.
+Runtime node statuses are `queue`, `running`, `failed`, and `succeeded`. Node states are keyed by node name; if a state is not reported, request detail shows it as not reported.
 
 ## Editing rules
 

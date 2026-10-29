@@ -5,8 +5,9 @@ import { parse, stringify } from "yaml";
 import { ConfigEditor } from "./components/ConfigEditor";
 import { PipelineEditor } from "./components/PipelineEditor";
 import { RequestsView } from "./components/RequestsView";
-import { SpaceHeader, SectionTabs } from "./components/SpaceHeader";
-import { SpaceSidebar } from "./components/SpaceSidebar";
+import { AuthTokensView } from "./components/AuthTokensView";
+import { SpecHeader, SectionTabs } from "./components/SpecHeader";
+import { SpecSidebar } from "./components/SpecSidebar";
 import { SpecDialogs } from "./components/SpecDialogs";
 import { WorkloadsEditor } from "./components/WorkloadsEditor";
 import { asObject, starterYaml } from "./specUtils";
@@ -14,9 +15,12 @@ import type { ConfigTab, PipelineNode, RequestItem, SpecItem } from "./types";
 import "./App.css";
 import "./graph.css";
 import "./space-actions.css";
+import "./request-details.css";
+import "./auth-tokens.css";
 
 function App() {
   const [activeSpecSlug, setActiveSpecSlug] = useState("");
+  const [authTokensActive, setAuthTokensActive] = useState(false);
   const [activePipeline, setActivePipeline] = useState("");
   const [selectedNodeName, setSelectedNodeName] = useState("");
   const [activeTab, setActiveTab] = useState<ConfigTab>("pipeline");
@@ -28,7 +32,7 @@ function App() {
   const [renameTarget, setRenameTarget] = useState<SpecItem | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameOpen, setRenameOpen] = useState(false);
-  const [spaceMenuSlug, setSpaceMenuSlug] = useState<string | null>(null);
+  const [specMenuSlug, setSpecMenuSlug] = useState<string | null>(null);
   const [creatingSpec, setCreatingSpec] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<string | null>(null);
   const [dark, setDark] = useState(false);
@@ -46,6 +50,7 @@ function App() {
   })) as SpecItem[];
   const activeSpec = specs.find((spec) => spec.slug === activeSpecSlug) ?? specs[0];
   const remoteRequests = useQuery(api.requests.list, activeSpec ? { specSlug: activeSpec.slug } : "skip");
+  const remoteUnits = useQuery(api.units.list, {});
   const createSpec = useMutation(api.specs.create);
   const updateSpec = useMutation(api.specs.update);
   const renameSpec = useMutation(api.specs.rename);
@@ -53,24 +58,31 @@ function App() {
   const createRequest = useMutation(api.requests.create);
   const connection = useConvexConnectionState();
 
-  const requests: RequestItem[] = (remoteRequests ?? []).map((request) => ({
-    id: `REQ-${String(request._id).slice(-4).toUpperCase()}`,
-    convexId: request._id,
-    title: request.title,
-    spec: request.specSlug,
-    pipelineName: request.pipelineName,
-    status: ({ queued: "waiting", received: "possessed", running: "processing", success: "succeeded", complete: "succeeded", completed: "succeeded", failed: "process_failed" } as Record<string, string>)[request.status] ?? request.status,
-    node: request.plan?.find((node: any) => node.status === "running")?.nodeName ?? request.currentNode ?? "Waiting",
-    unit: request.unitId ?? "Unassigned",
-    progress: request.progress,
-    createdAt: request._creationTime,
-    params: request.params as Record<string, unknown>,
-    plan: Array.isArray(request.plan) && request.plan.length ? request.plan : Object.entries(asObject(request.nodeStates)).map(([nodeName, state]) => ({
-      nodeName,
-      status: ({ queued: "queue", queue: "queue", running: "running", failed: "failed", success: "succeeded", succeeded: "succeeded" } as Record<string, string>)[String(asObject(state).status)] ?? "queue",
-      ...(asObject(state).device ? { device: asObject(state).device as { family?: string; index?: number } } : {}),
-    })),
-  }));
+  const requests: RequestItem[] = (remoteRequests ?? []).map((request) => {
+    const id = `REQ-${String(request._id).slice(-4).toUpperCase()}`;
+    const payload = request.payload;
+    const payloadObject = asObject(payload);
+    return {
+      id,
+      convexId: request._id,
+      title: typeof payloadObject.title === "string" ? payloadObject.title : id,
+      pipelineName: request.pipelineName,
+      status: ({
+        waitting: "waiting",
+        queued: "waiting",
+        received: "possessed",
+        running: "processing",
+        success: "succeeded",
+        complete: "succeeded",
+        completed: "succeeded",
+        failed: "process_failed",
+      } as Record<string, string>)[request.status] ?? request.status,
+      createdAt: request._creationTime,
+      payload,
+      unitId: request.unitId,
+      nodeStates: asObject(request.nodeStates) as RequestItem["nodeStates"],
+    };
+  });
   const parsed = useMemo(() => {
     try {
       return asObject(parse(yamlDraft || activeSpec?.yaml || starterYaml));
@@ -305,9 +317,9 @@ function App() {
       setYamlDraft(savedYaml);
       setHasEdits(false);
       setError("");
-      notice("Space saved");
+      notice("Spec saved");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save this space");
+      setError(e instanceof Error ? e.message : "Could not save this spec");
     } finally {
       setSaving(false);
     }
@@ -320,7 +332,7 @@ function App() {
     const name = String(data.get("name") || "").trim();
     const description = String(data.get("description") || "").trim();
     try {
-      if (!name) throw new Error("Add a name for this spec space.");
+      if (!name) throw new Error("Add a name for this spec.");
       let yaml = starterYaml;
       let document: Record<string, any> = asObject(parse(starterYaml));
       if (file instanceof File && file.size > 0) {
@@ -343,15 +355,16 @@ function App() {
       setActiveSpecSlug(slug);
       setSpecUploadName("");
       setSpecNameDraft("");
-      notice(file instanceof File && file.size > 0 ? "Spec uploaded to new space" : "Space created");
+      notice(file instanceof File && file.size > 0 ? "Spec uploaded" : "Spec created");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create space");
+      setError(e instanceof Error ? e.message : "Could not create spec");
     } finally {
       setCreatingSpec(false);
     }
   }
 
   function openSpecModal() {
+    setAuthTokensActive(false);
     setError("");
     setSpecUploadName("");
     setSpecNameDraft("");
@@ -362,10 +375,10 @@ function App() {
     event.preventDefault();
     if (!activeSpec || !currentPipelineName) return;
     const data = new FormData(event.currentTarget);
-    const params: Record<string, unknown> = {};
-    for (const [key, value] of data.entries()) if (key.startsWith("param:")) params[key.slice(6)] = String(value);
+    const payload: Record<string, unknown> = {};
+    for (const [key, value] of data.entries()) if (key.startsWith("param:")) payload[key.slice(6)] = String(value);
     try {
-      await createRequest({ specSlug: activeSpec.slug, pipelineName: currentPipelineName, title: String(data.get("title") || "New request"), params, status: "waiting" });
+      await createRequest({ specSlug: activeSpec.slug, pipelineName: currentPipelineName, payload });
       setModal(null);
       notice("Request added");
     } catch (e) {
@@ -375,7 +388,14 @@ function App() {
 
   function openSpec(spec: SpecItem) {
     setActiveSpecSlug(spec.slug);
+    setAuthTokensActive(false);
     setActiveTab("pipeline");
+    setError("");
+  }
+
+  function openAuthTokens() {
+    setAuthTokensActive(true);
+    setModal(null);
     setError("");
   }
 
@@ -383,7 +403,7 @@ function App() {
     setError("");
     setRenameTarget(spec);
     setRenameDraft(spec.name);
-    setSpaceMenuSlug(null);
+    setSpecMenuSlug(null);
     setRenameOpen(true);
   }
 
@@ -394,25 +414,25 @@ function App() {
       await renameSpec({ id: renameTarget._id as never, name: renameDraft.trim() });
       setRenameOpen(false);
       setRenameTarget(null);
-      notice("Space renamed");
+      notice("Spec renamed");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not rename space");
+      setError(e instanceof Error ? e.message : "Could not rename spec");
     }
   }
 
-  async function deleteSpace(spec: SpecItem) {
-    setSpaceMenuSlug(null);
-    if (!window.confirm(`Delete “${spec.name}” and all its requests? This cannot be undone.`)) return;
+  async function archiveSpec(spec: SpecItem) {
+    setSpecMenuSlug(null);
+    if (!window.confirm(`Archive “${spec.name}”? It will be hidden from the specs list; its requests will be kept.`)) return;
     try {
-      const result = await removeSpec({ id: spec._id as never });
+      await removeSpec({ id: spec._id as never });
       if (activeSpec?.slug === spec.slug) {
         setActiveSpecSlug("");
         setSelectedRequest(null);
         setHasEdits(false);
       }
-      notice(`Space deleted · ${result.deletedRequests} request${result.deletedRequests === 1 ? "" : "s"} removed`);
+      notice("Spec archived");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete space");
+      setError(e instanceof Error ? e.message : "Could not archive spec");
     }
   }
 
@@ -423,23 +443,27 @@ function App() {
 
   return (
     <div className={dark ? "desktop-shell dark" : "desktop-shell"}>
-      <SpaceSidebar
+      <SpecSidebar
         specs={specs}
-        activeSpec={activeSpec}
+        activeSpec={authTokensActive ? undefined : activeSpec}
         connected={connection.isWebSocketConnected}
         dark={dark}
-        spaceMenuSlug={spaceMenuSlug}
+        specMenuSlug={specMenuSlug}
+        authTokensActive={authTokensActive}
         onCreate={openSpecModal}
-        onOpen={(spec) => { openSpec(spec); setSpaceMenuSlug(null); }}
-        onToggleMenu={(slug) => setSpaceMenuSlug(spaceMenuSlug === slug ? null : slug)}
+        onOpenAuthTokens={openAuthTokens}
+        onOpen={(spec) => { openSpec(spec); setSpecMenuSlug(null); }}
+        onToggleMenu={(slug) => setSpecMenuSlug(specMenuSlug === slug ? null : slug)}
         onRename={openRename}
-        onDelete={(spec) => void deleteSpace(spec)}
+        onDelete={(spec) => void archiveSpec(spec)}
         onToggleTheme={() => setDark(!dark)}
       />
       <main className="work-area">
-        {activeSpec ? (
+        {authTokensActive ? (
+          <div className="editor-scroll"><AuthTokensView /></div>
+        ) : activeSpec ? (
           <>
-            <SpaceHeader
+            <SpecHeader
               spec={activeSpec}
               dirty={dirty}
               saving={saving}
@@ -518,6 +542,7 @@ function App() {
                   pipelineNames={pipelineNames}
                   currentPipelineName={currentPipelineName}
                   requests={pipelineRequests}
+                  units={remoteUnits ?? []}
                   activeRequest={activeRequest}
                   activeRequestPipelineNodes={activeRequestPipelineNodes}
                   selectedRequest={selectedRequest}
@@ -533,7 +558,7 @@ function App() {
           <div className="welcome-view">
             <div className="welcome-mark">m</div>
             <h1>What are you building?</h1>
-            <p>Create a spec to make a new space for your pipeline configuration and requests.</p>
+            <p>Create a spec to manage pipeline configuration and requests.</p>
             <button className="request-button" onClick={openSpecModal}>＋ Create your first spec</button>
             {error && <div className="inline-error">{error}</div>}
           </div>
