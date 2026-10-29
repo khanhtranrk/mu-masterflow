@@ -60,7 +60,7 @@ Response is an array, empty when nothing is waiting:
 
 Compatibility distinction: the stored request status is `possessed`; the claim response says `received` to match the worker response contract.
 
-## `POST /hooks/requests/update`
+## `PUT /hooks/requests/update`
 
 Example:
 
@@ -68,18 +68,22 @@ Example:
 {
   "id": "<requestId returned by claim>",
   "status": "processing",
-  "plan": [
-    {"nodeName":"generate-song","status":"running","device":{"family":"cuda","index":0}},
-    {"nodeName":"generate-image","status":"running","device":{"family":"cuda","index":1}},
-    {"nodeName":"transcript","status":"queue"}
-  ],
-  "technical": {"step": 12, "memoryMb": 9216}
+  "node_states": {
+    "node1": {
+      "status": "running",
+      "device": { "family": "cuda", "index": 0 }
+    },
+    "node2": {
+      "status": "running",
+      "device": { "family": "cuda", "index": 0 }
+    }
+  }
 }
 ```
 
 Request statuses: `waiting`, `possessed`, `processing`, `process_failed`, `artifact_available`, `retrieve_artifact_failed`, `succeeded`.
 
-Node statuses in `plan`: `queue`, `running`, `failed`, `succeeded`. Each plan entry requires `nodeName` and `status`. Optional `device` currently requires `family` and numeric `index` at the HTTP boundary. Optional `technical` is merged into the existing technical object so worker telemetry can evolve without a new top-level field for each metric.
+Node statuses in `node_states`: `queue`, `running`, `failed`, `succeeded`. Each state entry requires `status`. Optional `device` currently requires `family` and numeric `index` at the HTTP boundary.
 
 Success response: `{"ok":true}`. Terminal request states `process_failed`, `retrieve_artifact_failed`, and `succeeded` clear the request from the unit's active request IDs. `artifact_available` is nonterminal because artifact retrieval may still be in progress.
 

@@ -1,0 +1,101 @@
+import type { FormEvent, ChangeEvent } from "react";
+import { asObject } from "../specUtils";
+
+type SpecDialogsProps = {
+  modal: "spec" | "request" | null;
+  renameOpen: boolean;
+  error: string;
+  specNameDraft: string;
+  specUploadName: string;
+  renameDraft: string;
+  currentPipelineName: string;
+  pipelineParams: Record<string, any>;
+  creatingSpec: boolean;
+  onCloseModal: () => void;
+  onCloseRename: () => void;
+  onSubmitCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmitRename: (event: FormEvent<HTMLFormElement>) => void;
+  onSpecNameChange: (value: string) => void;
+  onSpecFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onRenameChange: (value: string) => void;
+  onSubmitRequest: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+function CreateDialog({ props }: { props: SpecDialogsProps }) {
+  const { modal, error, specNameDraft, specUploadName, currentPipelineName, pipelineParams, creatingSpec } = props;
+  if (!modal) return null;
+
+  return (
+    <div className="modal-backdrop" onClick={props.onCloseModal}>
+      <form className="simple-modal" onClick={(event) => event.stopPropagation()} onSubmit={modal === "spec" ? props.onSubmitCreate : props.onSubmitRequest}>
+        <div className="modal-top">
+          <div className="modal-icon">{modal === "spec" ? "◫" : "▤"}</div>
+          <button type="button" className="icon-action" onClick={props.onCloseModal}>×</button>
+        </div>
+        <h2>{modal === "spec" ? "Create a spec" : "New request"}</h2>
+        <p>{modal === "spec" ? "Create a space from scratch or upload an existing spec.yaml." : `Add a request to ${currentPipelineName}.`}</p>
+        {modal === "spec" ? (
+          <>
+            <label>Space name<input name="name" autoFocus required value={specNameDraft} onChange={(event) => props.onSpecNameChange(event.target.value)} placeholder="e.g. Song with cover" /></label>
+            <label>Description<input name="description" placeholder="What does this spec do?" /></label>
+            <label className="spec-upload">
+              Existing spec.yaml
+              <span className="spec-upload-control">
+                <span className="upload-glyph">↑</span>
+                <span><b>{specUploadName || "Choose a YAML file"}</b><small>{specUploadName ? "This file will be saved as the space spec." : "Upload .yaml or .yml from your computer"}</small></span>
+                <input name="specFile" type="file" accept=".yaml,.yml,application/yaml,text/yaml,text/plain" onChange={props.onSpecFileChange} />
+              </span>
+            </label>
+            <div className="form-hint">The uploaded YAML is validated and kept as the full spec. Pipeline params and nodes are indexed for the editor.</div>
+          </>
+        ) : (
+          <>
+            <label>Request name<input name="title" autoFocus required placeholder="Give this run a name" /></label>
+            {Object.entries(asObject(pipelineParams)).map(([name, raw]) => {
+              const definition = asObject(raw);
+              const multiline = definition.type === "string" && (name.toLowerCase().includes("prompt") || name.toLowerCase().includes("lyrics"));
+              return <label key={name}>{name}{multiline ? <textarea name={`param:${name}`} rows={3} placeholder={`Enter ${name}`} /> : <input name={`param:${name}`} placeholder={`Enter ${name}`} />}</label>;
+            })}
+            {Object.keys(asObject(pipelineParams)).length === 0 && <div className="form-hint">This pipeline has no declared parameters yet. You can add them in Spec YAML.</div>}
+          </>
+        )}
+        {modal === "spec" && error && <div className="form-error">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="subtle-button" onClick={props.onCloseModal}>Cancel</button>
+          <button className="request-button" type="submit" disabled={creatingSpec}>{modal === "spec" ? creatingSpec ? "Creating…" : "Create space" : "Create request"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function RenameDialog({ props }: { props: SpecDialogsProps }) {
+  if (!props.renameOpen) return null;
+  return (
+    <div className="modal-backdrop" onClick={props.onCloseRename}>
+      <form className="simple-modal" onClick={(event) => event.stopPropagation()} onSubmit={props.onSubmitRename}>
+        <div className="modal-top">
+          <div className="modal-icon">✎</div>
+          <button type="button" className="icon-action" onClick={props.onCloseRename}>×</button>
+        </div>
+        <h2>Rename space</h2>
+        <p>Choose a new name for this space.</p>
+        <label>Space name<input autoFocus required value={props.renameDraft} onChange={(event) => props.onRenameChange(event.target.value)} /></label>
+        {props.error && <div className="form-error">{props.error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="subtle-button" onClick={props.onCloseRename}>Cancel</button>
+          <button className="request-button" type="submit" disabled={!props.renameDraft.trim()}>Rename space</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export function SpecDialogs(props: SpecDialogsProps) {
+  return (
+    <>
+      <CreateDialog props={props} />
+      <RenameDialog props={props} />
+    </>
+  );
+}

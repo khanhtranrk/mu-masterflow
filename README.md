@@ -12,9 +12,9 @@ MasterFlow is a small desktop app for authoring and managing `spec.yaml` files, 
 
 ## Quick start
 
-Install dependencies with `npm install`. Configure the Convex development URL in `.env.local` (`VITE_CONVEX_URL`; optional `VITE_CONVEX_SITE_URL` is used by workers). Start the Convex development backend with `npx convex dev`, then start the frontend with `npm run dev`. The native Tauri window is started with `npm run tauri -- dev`.
+Install dependencies with `bun install`. Configure the Convex development URL in `.env.local` (`VITE_CONVEX_URL`; optional `VITE_CONVEX_SITE_URL` is used by workers). Start the Convex development backend with `bunx --bun convex dev`, then start the frontend with `bun run dev`. The native Tauri window is started with `bun run tauri -- dev`.
 
-Build the frontend with `npx vite build --configLoader runner` when the environment cannot write Vite's temporary config bundle under `node_modules/.vite-temp`; the usual `npm run build` is also available in a normal writable checkout.
+Build the frontend with `bunx --bun vite build --configLoader runner` when the environment cannot write Vite's temporary config bundle under `node_modules/.vite-temp`; the usual `bun run build` is also available in a normal writable checkout.
 
 ## Core design
 

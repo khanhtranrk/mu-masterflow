@@ -17,7 +17,9 @@ Keep the app calm and focused: persistent left sidebar for spaces, selected spac
 
 ## Code map
 
-- `src/App.tsx`: main UI, YAML editing, spec CRUD actions, request list and request execution graph.
+- `src/App.tsx`: Convex queries/mutations, page state, and composition of the space workspace.
+- `src/components/`: sidebar, workspace sections, graph, YAML editors, request views, and dialogs.
+- `src/specUtils.ts`, `src/types.ts`: shared YAML/graph helpers and frontend data types.
 - `src/App.css`, `src/graph.css`, `src/space-actions.css`: UI styles and graph/action-menu presentation.
 - `src/main.tsx`: React root and Convex client provider.
 - `convex/schema.ts`: Convex tables and indexes.
@@ -60,7 +62,7 @@ Keep the app calm and focused: persistent left sidebar for spaces, selected spac
 - Do not expose the worker bearer token in frontend code, logs, docs, or committed env files.
 - Do not delete or rename a user space as part of a test. Use a disposable spec and clean it up.
 - If changing request status shapes or stored fields, update validators, migration/backfill logic, HTTP validation, frontend status labels, and docs together.
-- Run `npx tsc --noEmit` and `npx vite build --configLoader runner` after relevant changes. If Convex is available, use `npx convex run <module:function> '<json args>' --push` to sync and verify development functions. Do not claim a Convex deployment test if the backend was unavailable.
+- Run `bunx --bun tsc --noEmit` and `bunx --bun vite build --configLoader runner` after relevant changes. If Convex is available, use `bunx --bun convex run <module:function> '<json args>' --push` to sync and verify development functions. Do not claim a Convex deployment test if the backend was unavailable.
 
 ## Local environment
 

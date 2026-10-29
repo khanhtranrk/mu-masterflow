@@ -2,12 +2,13 @@
   "name": "mu-masterflow",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "bun@1.4.3",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri"
+    "dev": "bun run --bun vite",
+    "build": "bun run --bun tsc && bun run --bun vite build",
+    "preview": "bun run --bun vite preview",
+    "tauri": "bun run --bun ./node_modules/@tauri-apps/cli/tauri.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

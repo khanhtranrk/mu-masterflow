@@ -9,12 +9,7 @@ const requestStatus = v.union(
   v.literal("retrieve_artifact_failed"), v.literal("succeeded"),
 );
 const nodePlanStatus = v.union(v.literal("queue"), v.literal("running"), v.literal("failed"), v.literal("succeeded"));
-const nodePlanEntry = v.object({ nodeName: v.string(), status: nodePlanStatus, device: v.optional(v.any()) });
-const updateArgs = {
-  id: v.id("requests"), status: v.optional(requestStatus), currentNode: v.optional(v.string()),
-  progress: v.optional(v.number()), plan: v.optional(v.array(nodePlanEntry)),
-  technical: v.optional(v.any()), unitId: v.optional(v.string()),
-};
+const nodePlanEntry = v.object({  });
 
 export const list = query({
   args: { specSlug: v.string() },
@@ -23,61 +18,110 @@ export const list = query({
 });
 
 export const create = mutation({
-  args: { specSlug: v.string(), pipelineName: v.optional(v.string()), title: v.string(), params: v.any(), status: requestStatus },
+  args: {
+    specSlug: v.string(),
+    pipelineName: v.string(),
+    payload: v.any(),
+  },
   returns: v.id("requests"),
   handler: async (ctx, args) => {
     const spec = await ctx.db.query("specs").withIndex("by_slug", q => q.eq("slug", args.specSlug)).first();
     if (!spec) throw new Error("Spec not found");
+
     const document = parse(spec.yaml) as Record<string, any> | null;
+
     const pipelines = document && typeof document.pipeline === "object" && !Array.isArray(document.pipeline) ? document.pipeline : {};
     const pipelineName = args.pipelineName ?? Object.keys(pipelines)[0];
     const pipeline = pipelineName ? pipelines[pipelineName] : undefined;
-    if (args.pipelineName && !pipeline) throw new Error(`Pipeline '${args.pipelineName}' is not defined in this spec`);
-    const requestArgs = { specSlug: args.specSlug, title: args.title, params: args.params, status: args.status };
+
+    if (args.pipelineName && !pipeline)
+      throw new Error(`Pipeline '${args.pipelineName}' is not defined in this spec`);
+
+    const requestArgs = {
+      specSlug: args.specSlug,
+      payload: args.payload,
+    };
+
     return ctx.db.insert("requests", {
       ...requestArgs,
-      ...(pipelineName ? { pipelineName } : {}),
-      technical: {}, plan: [], progress: 0,
+      pipelineName,
+      status: "waitting"
     });
   },
 });
 
-async function applyRequestUpdate(ctx: MutationCtx, args: {
-  id: Id<"requests">;
-  status?: "waiting" | "possessed" | "processing" | "process_failed" | "artifact_available" | "retrieve_artifact_failed" | "succeeded";
-  currentNode?: string;
-  progress?: number;
-  plan?: Array<{ nodeName: string; status: "queue" | "running" | "failed" | "succeeded"; device?: unknown }>;
-  technical?: Record<string, unknown>;
-  unitId?: string;
-}) {
-  const { id, ...patch } = args;
-  const request = await ctx.db.get(id);
-  if (!request) throw new Error("Request not found");
-  await ctx.db.patch(id, {
-    ...patch,
-    technical: patch.technical ? { ...request.technical, ...patch.technical } : request.technical,
-  });
-
-  const terminal = ["process_failed", "retrieve_artifact_failed", "succeeded"].includes(args.status ?? "");
-  if (terminal && request.unitId) {
-    const unit = await ctx.db.query("units").withIndex("by_unit_id", q => q.eq("unitId", request.unitId!)).first();
-    if (unit) {
-      const active = (unit.currentRequestIds ?? (unit.currentRequestId ? [unit.currentRequestId] : [])).filter((requestId) => requestId !== id);
-      await ctx.db.patch(unit._id, { currentRequestIds: active, status: active.length ? "busy" : "online", lastSeen: Date.now() });
-    }
-  }
-  return id;
-}
-
 export const update = mutation({
-  args: updateArgs,
+  args: {
+    id: v.id("requests"),
+    payload: v.any(),
+    status: v.optional(requestStatus),
+  },
   returns: v.id("requests"),
-  handler: applyRequestUpdate,
+  handler: async (ctx, args) => {
+    const { id, ...patch } = args;
+    const request = await ctx.db.get(id);
+    if (!request)
+      throw new Error("Request not found");
+    await ctx.db.patch(id, {...patch});
+    return id;
+  },
 });
 
-export const updateFromWorker = internalMutation({
-  args: updateArgs,
+export const report = internalMutation({
+  args: {
+    id: v.id("requests"),
+    nodeStates: v.optional(v.record(
+      v.string(),
+      v.object({
+        status: v.optional(v.string()),
+        device: v.optional(v.object({
+          family: v.string(),
+          index: v.number(),
+        })),
+        artifacts: v.optional(v.record(
+          v.string(),
+          v.string()
+        )),
+        logs: v.optional(v.array(v.string())),
+      }),
+    )),
+    status: v.optional(requestStatus),
+  },
   returns: v.id("requests"),
-  handler: applyRequestUpdate,
+
+  handler: async (ctx, args) => {
+    const { id, nodeStates: incomingNodes, ...patch } = args;
+    const request = await ctx.db.get(id);
+
+    if (!request) {
+      throw new Error("Request not found");
+    }
+
+    const nodeStates = { ...request.nodeStates };
+
+    for (const [name, incoming] of Object.entries(incomingNodes ?? {})) {
+      const previous = nodeStates[name];
+
+      if (!previous && incoming.status === undefined) {
+        throw new Error(`Node "${name}" requires a status when created`);
+      }
+
+      nodeStates[name] = {
+        ...previous,
+        ...incoming,
+        status: incoming.status ?? previous?.status!,
+        logs: [
+          ...(previous?.logs ?? []),
+          ...(incoming.logs ?? []),
+        ],
+      };
+    }
+
+    await ctx.db.patch(id, {
+      ...patch,
+      ...(incomingNodes ? { nodeStates } : {}),
+    });
+
+    return id;
+  },
 });
