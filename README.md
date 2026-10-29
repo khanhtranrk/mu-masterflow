@@ -2,6 +2,8 @@
 
 MasterFlow is a small desktop app for authoring and managing `spec.yaml` files, their pipeline dependency graphs, and requests created for those pipelines. It uses React, Vite, Tauri, and Convex.
 
+Worker notifications are delivered in real time to the Notifications page. When the app is focused, new notifications appear in an in-app toast; when it is not focused, Tauri can show a system notification after notification permission is granted.
+
 ## Start here
 
 - [Agent guide](AGENT.md): product intent, code map, invariants, and safe workflow for continuing development.
@@ -21,3 +23,5 @@ Build the frontend with `bunx --bun vite build --configLoader runner` when the e
 A spec is stored as one complete YAML string in Convex; there is no separate spaces table. Each request is a separate Convex document keyed by `specSlug` and associated with a `pipelineName`. Request input is stored as `payload`; per-node runtime status, device, artifacts, and logs are stored in `nodeStates`. The pipeline graph is derived from `depends_on` in the YAML. It is not a linear list of sequential steps.
 
 Worker hooks are documented in [docs/worker-hooks.md](docs/worker-hooks.md). Workers use auth tokens managed from the sidebar through regular Convex queries and mutations. The token manager stores only token hashes; the generated plaintext is shown once when a token is created. Anyone who can access the Convex deployment can manage these tokens.
+
+The worker hook `POST /hooks/notifications/send` can create a notification for the desktop. See [Worker HTTP hooks](docs/worker-hooks.md) for its request and response contract.

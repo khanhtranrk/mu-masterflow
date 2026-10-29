@@ -19,8 +19,10 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 
 - `src/App.tsx`: Convex queries/mutations, page state, and composition of the spec workspace.
 - `src/components/`: spec sidebar/workspace sections, graph, YAML editors, request views, auth-token manager, and dialogs.
+- `src/components/NotificationsView.tsx`: reactive notifications list and read/dismiss actions.
+- `src/systemNotifications.ts`: Tauri/browser notification permission and delivery helpers.
 - `src/specUtils.ts`, `src/types.ts`: shared YAML/graph helpers and frontend data types.
-- `src/App.css`, `src/graph.css`, `src/space-actions.css`, `src/request-details.css`, `src/auth-tokens.css`: UI styles.
+- `src/App.css`, `src/graph.css`, `src/space-actions.css`, `src/request-details.css`, `src/auth-tokens.css`, `src/notifications.css`: UI styles.
 - `src/main.tsx`: React root and Convex client provider.
 - `convex/schema.ts`: Convex tables and indexes.
 - `convex/specs.ts`: spec queries and mutations, YAML retrieval, archive handling.
@@ -28,6 +30,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `convex/units.ts`: unit heartbeat and atomic request claiming.
 - `convex/http.ts`: bearer-authenticated worker HTTP endpoints.
 - `convex/authTokens.ts`: internal auth-token lookup, creation, updates, revocation, and last-used tracking.
+- `convex/notifications.ts`: notification query, read/dismiss mutations, and internal creation.
 - `src-tauri/`: Tauri v2 desktop wrapper and window config.
 - `README.md`: repository entry point.
 
@@ -52,6 +55,8 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - Worker reports use `POST /hooks/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.
 - Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
 - Auth-token management uses the Convex client API. Worker HTTP hooks remain under `/hooks/` and use bearer tokens.
+- Workers create notifications with `POST /hooks/notifications/send`, using an active bearer token and a JSON `title`, `message`, and optional string-array `tags`. The desktop subscribes to notifications through Convex; its list is newest-first and limited to 100 in the UI.
+- New notifications received while the desktop window is visible and focused use an in-app toast. Notifications received while unfocused use the Tauri system notification plugin when OS permission is granted; the Notifications page is where users request permission. The initial query is treated as existing history, not as newly arrived notifications.
 - Hook routes and exact JSON contracts are in [docs/worker-hooks.md](docs/worker-hooks.md).
 
 ## Compatibility note

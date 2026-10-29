@@ -2,6 +2,17 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  notifications: defineTable({
+    title: v.string(),
+    message: v.string(),
+    tags: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+  })
+  .index("by_created_at", ["createdAt"])
+  .index("by_deleted_at", ["deletedAt"]),
+
   authTokens: defineTable({
     name: v.string(),
     tokenHash: v.string(),

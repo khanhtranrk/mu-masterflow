@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useConvexConnectionState, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { parse, stringify } from "yaml";
@@ -6,21 +6,26 @@ import { ConfigEditor } from "./components/ConfigEditor";
 import { PipelineEditor } from "./components/PipelineEditor";
 import { RequestsView } from "./components/RequestsView";
 import { AuthTokensView } from "./components/AuthTokensView";
+import { NotificationsView } from "./components/NotificationsView";
 import { SpecHeader, SectionTabs } from "./components/SpecHeader";
 import { SpecSidebar } from "./components/SpecSidebar";
 import { SpecDialogs } from "./components/SpecDialogs";
 import { WorkloadsEditor } from "./components/WorkloadsEditor";
 import { asObject, starterYaml } from "./specUtils";
+import { sendSystemNotification } from "./systemNotifications";
 import type { ConfigTab, PipelineNode, RequestItem, SpecItem } from "./types";
 import "./App.css";
 import "./graph.css";
 import "./space-actions.css";
 import "./request-details.css";
 import "./auth-tokens.css";
+import "./notifications.css";
 
 function App() {
   const [activeSpecSlug, setActiveSpecSlug] = useState("");
   const [authTokensActive, setAuthTokensActive] = useState(false);
+  const [notificationsActive, setNotificationsActive] = useState(false);
+  const [incomingNotification, setIncomingNotification] = useState<{ title: string; message: string } | null>(null);
   const [activePipeline, setActivePipeline] = useState("");
   const [selectedNodeName, setSelectedNodeName] = useState("");
   const [activeTab, setActiveTab] = useState<ConfigTab>("pipeline");
@@ -42,8 +47,11 @@ function App() {
   const [hasEdits, setHasEdits] = useState(false);
   const [workloadDraft, setWorkloadDraft] = useState("");
   const [nodeDraft, setNodeDraft] = useState("");
+  const seenNotificationIds = useRef<Set<string> | null>(null);
 
   const remoteSpecs = useQuery(api.specs.list, {});
+  const remoteNotifications = useQuery(api.notifications.list, { limit: 100 });
+  const unreadNotificationCount = remoteNotifications?.filter((notification) => notification.readAt === undefined).length ?? 0;
   const specs: SpecItem[] = (remoteSpecs ?? []).map((spec, index) => ({
     ...spec,
     color: ["violet", "blue", "green", "orange"][index % 4],
@@ -57,6 +65,38 @@ function App() {
   const removeSpec = useMutation(api.specs.remove);
   const createRequest = useMutation(api.requests.create);
   const connection = useConvexConnectionState();
+
+  useEffect(() => {
+    if (remoteNotifications === undefined) return;
+    const currentIds = new Set(remoteNotifications.map((notification) => notification._id));
+    if (seenNotificationIds.current === null) {
+      seenNotificationIds.current = currentIds;
+      return;
+    }
+
+    const newNotifications = remoteNotifications
+      .filter((notification) => !seenNotificationIds.current?.has(notification._id))
+      .reverse();
+    seenNotificationIds.current = currentIds;
+    if (newNotifications.length === 0) return;
+
+    if (document.visibilityState === "visible" && document.hasFocus()) {
+      const notification = newNotifications[newNotifications.length - 1];
+      setIncomingNotification({ title: notification.title, message: notification.message });
+    } else {
+      for (const notification of newNotifications) {
+        void sendSystemNotification(notification.title, notification.message).catch((reason: unknown) => {
+          setError(reason instanceof Error ? reason.message : "Could not send system notification.");
+        });
+      }
+    }
+  }, [remoteNotifications]);
+
+  useEffect(() => {
+    if (!incomingNotification) return;
+    const timeout = window.setTimeout(() => setIncomingNotification(null), 6500);
+    return () => window.clearTimeout(timeout);
+  }, [incomingNotification]);
 
   const requests: RequestItem[] = (remoteRequests ?? []).map((request) => {
     const id = `REQ-${String(request._id).slice(-4).toUpperCase()}`;
@@ -365,6 +405,7 @@ function App() {
 
   function openSpecModal() {
     setAuthTokensActive(false);
+    setNotificationsActive(false);
     setError("");
     setSpecUploadName("");
     setSpecNameDraft("");
@@ -389,14 +430,24 @@ function App() {
   function openSpec(spec: SpecItem) {
     setActiveSpecSlug(spec.slug);
     setAuthTokensActive(false);
+    setNotificationsActive(false);
     setActiveTab("pipeline");
     setError("");
   }
 
   function openAuthTokens() {
     setAuthTokensActive(true);
+    setNotificationsActive(false);
     setModal(null);
     setError("");
+  }
+
+  function openNotifications() {
+    setNotificationsActive(true);
+    setAuthTokensActive(false);
+    setModal(null);
+    setError("");
+    setIncomingNotification(null);
   }
 
   function openRename(spec: SpecItem) {
@@ -445,13 +496,16 @@ function App() {
     <div className={dark ? "desktop-shell dark" : "desktop-shell"}>
       <SpecSidebar
         specs={specs}
-        activeSpec={authTokensActive ? undefined : activeSpec}
+        activeSpec={authTokensActive || notificationsActive ? undefined : activeSpec}
         connected={connection.isWebSocketConnected}
         dark={dark}
         specMenuSlug={specMenuSlug}
         authTokensActive={authTokensActive}
+        notificationsActive={notificationsActive}
+        notificationCount={unreadNotificationCount}
         onCreate={openSpecModal}
         onOpenAuthTokens={openAuthTokens}
+        onOpenNotifications={openNotifications}
         onOpen={(spec) => { openSpec(spec); setSpecMenuSlug(null); }}
         onToggleMenu={(slug) => setSpecMenuSlug(specMenuSlug === slug ? null : slug)}
         onRename={openRename}
@@ -459,7 +513,12 @@ function App() {
         onToggleTheme={() => setDark(!dark)}
       />
       <main className="work-area">
-        {authTokensActive ? (
+        {notificationsActive ? (
+          <div className="editor-scroll">
+            <NotificationsView />
+            {error && <div className="inline-error">{error}<button onClick={() => setError("")}>×</button></div>}
+          </div>
+        ) : authTokensActive ? (
           <div className="editor-scroll"><AuthTokensView /></div>
         ) : activeSpec ? (
           <>
@@ -588,6 +647,15 @@ function App() {
         onRenameChange={setRenameDraft}
       />
       {toast && <div className="toast">✓ {toast}</div>}
+      {incomingNotification && (
+        <div className="notification-toast" role="status" aria-live="polite">
+          <button className="notification-toast-content" onClick={openNotifications}>
+            <b>{incomingNotification.title}</b>
+            <span>{incomingNotification.message}</span>
+          </button>
+          <button className="notification-toast-close" aria-label="Dismiss notification" onClick={() => setIncomingNotification(null)}>×</button>
+        </div>
+      )}
     </div>
   );
 }

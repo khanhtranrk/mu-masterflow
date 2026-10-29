@@ -15,6 +15,26 @@ The desktop calls the public Convex functions `authTokens.list`, `authTokens.cre
 
 The browser generates a cryptographically random 256-bit token, computes its SHA-256 hash, and sends only the hash to `authTokens.create`. The plaintext is shown once and cannot be recovered from the token list. Store it in the worker's secret configuration.
 
+## `POST /hooks/notifications/send`
+
+Create a notification that is delivered reactively to the desktop app. The request requires an active worker bearer token and a JSON body with non-empty `title` and `message` strings. `tags` is optional and must be an array of strings.
+
+```json
+{
+  "title": "Job complete",
+  "message": "The export finished successfully.",
+  "tags": ["export", "success"]
+}
+```
+
+Success response (`200`):
+
+```json
+{"success":true,"notificationId":"<Convex notification ID>"}
+```
+
+An invalid body returns `400` with an `error` string. Missing, invalid, expired, or revoked bearer tokens return `401`. The desktop displays new notifications in-app while focused and uses a system notification while unfocused if the user has granted notification permission. The Notifications page lists the most recent 100 active notifications; users can mark them read or dismiss them.
+
 ## `POST /hooks/units/heartbeat`
 
 Register or refresh a unit. `unitId` and `status` (`online` or `offline`) are required. `unitType`, `workingDir`, and `devices` are optional; each device has a `family` and numeric `index`.

@@ -44,6 +44,7 @@ bun run tauri -- dev
 ```
 
 Tauri's `beforeDevCommand` starts Vite on the expected port. Tauri may need operating-system build libraries that are not needed for a frontend-only preview.
+The desktop uses Tauri's notification plugin for system notifications. Grant permission from the Notifications page; new updates then use in-app toasts while the window is focused and system notifications while it is not.
 
 ## Build and typecheck
 

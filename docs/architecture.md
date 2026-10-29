@@ -40,6 +40,10 @@ One document per worker `unitId`, including `unitType`, `status` (`online` or `o
 
 Stores token `name`, `tokenHash`, `createdAt`, optional `lastUsedAt`, `expiresAt`, and `deletedAt`. The UI generates token plaintext in the browser, hashes it with SHA-256, and stores only the hash. Worker requests are authorized against the stored hash. Token management uses public Convex queries and mutations.
 
+### `notifications`
+
+Worker hooks and internal workflows create notifications with `title`, `message`, optional `tags`, and `createdAt`. The desktop subscribes reactively to recent notifications, shows unread items in its sidebar and notification view, and lets the user mark them read or dismiss them. New notifications show an in-app toast while the app is focused; when it is not focused, Tauri sends a system notification if permission has been granted.
+
 ## Main flows
 
 ### Create a spec
@@ -70,6 +74,7 @@ The UI creates a request with a chosen `pipelineName` and parameter `payload`. A
 - `src/space-actions.css`: sidebar spec actions.
 - `src/request-details.css`: request node-state, artifact, log, and unit details.
 - `src/auth-tokens.css`: auth-token administration UI.
+- `src/components/NotificationsView.tsx` and `src/notifications.css`: notification list, unread state, and system-notification permission UI.
 - `src/main.tsx`: Convex client initialization and provider.
 
 ## Backend map
@@ -80,6 +85,7 @@ The UI creates a request with a chosen `pipelineName` and parameter `payload`. A
 - `convex/units.ts`: heartbeat and atomic claim.
 - `convex/http.ts`: bearer auth, CORS/preflight, and worker hooks.
 - `convex/authTokens.ts`: public token-management queries/mutations and internal worker-token lookup.
+- `convex/notifications.ts`: notification listing, read marking, dismissal, and internal creation.
 
 The desktop calls `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` through Convex's normal reactive client API. These functions are public, so anyone with access to the Convex deployment can manage worker tokens. The browser generates the random token and sends only its SHA-256 hash to Convex; plaintext is shown once and is never available to list/get operations.
 

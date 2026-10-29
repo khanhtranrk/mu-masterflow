@@ -67,10 +67,78 @@ const authorize = async (
   return valid;
 };
 
+http.route({ path: "/hooks/notifications/send", method: "OPTIONS", handler: options });
 http.route({ path: "/hooks/units/heartbeat", method: "OPTIONS", handler: options });
 http.route({ path: "/hooks/requests/claim", method: "OPTIONS", handler: options });
-http.route({ path: "/hooks/requests", method: "OPTIONS", handler: options });
+http.route({ path: "/hooks/requests/report", method: "OPTIONS", handler: options });
 http.route({ pathPrefix: "/hooks/specs/", method: "OPTIONS", handler: options });
+
+http.route({
+  path: "/hooks/notifications/send",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await authorize(ctx, request))) {
+      return json(
+        { error: "Unauthorized: provide an active worker auth token" },
+        401,
+      );
+    }
+
+    try {
+      const body: unknown = await request.json();
+
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body)
+      ) {
+        throw new Error("Request body must be an object");
+      }
+
+      const data = body as Record<string, unknown>;
+
+      if (typeof data.title !== "string" || !data.title.trim()) {
+        throw new Error("title is required");
+      }
+
+      if (typeof data.message !== "string" || !data.message.trim()) {
+        throw new Error("message is required");
+      }
+
+      if (
+        data.tags !== undefined &&
+        (
+          !Array.isArray(data.tags) ||
+          !data.tags.every((tag) => typeof tag === "string")
+        )
+      ) {
+        throw new Error("tags must be an array of strings");
+      }
+
+      const notificationId = await ctx.runMutation(
+        internal.notifications.create,
+        {
+          title: data.title,
+          message: data.message,
+          ...(data.tags !== undefined
+            ? { tags: data.tags as string[] }
+            : {}),
+        },
+      );
+
+      return json({ success: true, notificationId }, 200);
+    } catch (error) {
+      return json(
+        {
+          error: error instanceof Error
+            ? error.message
+            : "Invalid notification request",
+        },
+        400,
+      );
+    }
+  }),
+});
 
 http.route({
   path: "/hooks/units/heartbeat",

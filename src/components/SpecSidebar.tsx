@@ -9,8 +9,11 @@ type SpecSidebarProps = {
   dark: boolean;
   specMenuSlug: string | null;
   authTokensActive: boolean;
+  notificationsActive: boolean;
+  notificationCount: number;
   onCreate: () => void;
   onOpenAuthTokens: () => void;
+  onOpenNotifications: () => void;
   onOpen: (spec: SpecItem) => void;
   onToggleMenu: (slug: string) => void;
   onRename: (spec: SpecItem) => void;
@@ -25,8 +28,11 @@ export function SpecSidebar({
   dark,
   specMenuSlug,
   authTokensActive,
+  notificationsActive,
+  notificationCount,
   onCreate,
   onOpenAuthTokens,
+  onOpenNotifications,
   onOpen,
   onToggleMenu,
   onRename,
@@ -104,6 +110,10 @@ export function SpecSidebar({
       {specs.length === 0 && <div className="sidebar-empty">Create a spec to get started.</div>}
       <div className="sidebar-bottom">
         <div className="sidebar-status">{connected ? "Convex connected" : "Connecting to Convex"}</div>
+        <button className={`theme-button auth-token-nav ${notificationsActive ? "selected" : ""}`} onClick={onOpenNotifications}>
+          <span aria-hidden="true">♧</span> Notifications
+          {notificationCount > 0 && <span className="sidebar-notification-count">{notificationCount > 99 ? "99+" : notificationCount}</span>}
+        </button>
         <button className={`theme-button auth-token-nav ${authTokensActive ? "selected" : ""}`} onClick={onOpenAuthTokens}><span>⌘</span> Auth tokens</button>
         <button className="theme-button" onClick={onToggleTheme}><span>{dark ? "☼" : "☾"}</span> {dark ? "Light appearance" : "Dark appearance"}</button>
       </div>

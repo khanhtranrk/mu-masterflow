@@ -10,6 +10,7 @@
 
 import type * as authTokens from "../authTokens.js";
 import type * as http from "../http.js";
+import type * as notifications from "../notifications.js";
 import type * as requests from "../requests.js";
 import type * as specs from "../specs.js";
 import type * as units from "../units.js";
@@ -23,6 +24,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   authTokens: typeof authTokens;
   http: typeof http;
+  notifications: typeof notifications;
   requests: typeof requests;
   specs: typeof specs;
   units: typeof units;
