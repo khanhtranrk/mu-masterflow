@@ -1,10 +1,14 @@
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
+import { requireAuthenticated } from "./authz";
 
 export const list = query({
   args: {},
   returns: v.array(v.any()),
-  handler: async (ctx) => ctx.db.query("units").order("desc").take(200),
+  handler: async (ctx) => {
+    await requireAuthenticated(ctx);
+    return ctx.db.query("units").order("desc").take(200);
+  },
 });
 
 export const heartbeat = internalMutation({

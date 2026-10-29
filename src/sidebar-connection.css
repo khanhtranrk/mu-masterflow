@@ -1,0 +1,42 @@
+.server-name-badge {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 76px;
+  margin-left: auto;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-name-badge.connected {
+  border-color: #cfe7d7;
+  background: #edf7f0;
+  color: #42865a;
+}
+
+.dark .server-name-badge.connected {
+  border-color: #385441;
+  background: #27382d;
+  color: #a4d5b0;
+}
+
+.server-name-badge.disconnected {
+  border-color: var(--line);
+  background: var(--soft);
+}
+
+@media (max-width: 650px) {
+  .desktop-brand>span.server-name-badge {
+    display: none;
+  }
+}

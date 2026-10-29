@@ -22,8 +22,15 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `src/components/NotificationsView.tsx`: reactive notifications list and read/dismiss actions.
 - `src/systemNotifications.ts`: Tauri/browser notification permission and delivery helpers.
 - `src/specUtils.ts`, `src/types.ts`: shared YAML/graph helpers and frontend data types.
-- `src/App.css`, `src/graph.css`, `src/space-actions.css`, `src/request-details.css`, `src/auth-tokens.css`, `src/notifications.css`: UI styles.
-- `src/main.tsx`: React root and Convex client provider.
+- `src/App.css`, `src/graph.css`, `src/space-actions.css`, `src/request-details.css`, `src/auth-tokens.css`, `src/notifications.css`, `src/connections.css`, `src/settings.css`, `src/sidebar-connection.css`: UI styles.
+- `src/main.tsx`: React root and dynamic Convex connection provider.
+- `src/connectionSettings.ts`: server profile types, URL validation, and native/browser persistence bridge.
+- `src/components/ConnectionController.tsx`: server profile loading, Convex client lifecycle, and first-run connection gate.
+- `src/components/ServerSettingsPanel.tsx`: inline server profile management from Settings.
+- `src/components/LoginServerDialog.tsx`: login-specific server selection and editing dialog.
+- `src/components/DisconnectedRoot.tsx`: persistent workspace/settings shell for choosing a server while disconnected.
+- `src/components/SettingsView.tsx`: appearance, server management, and account sign-out settings.
+- `src/components/AuthenticatedRoot.tsx`: auth gate, sign-in/sign-up, and remembered-account UI.
 - `convex/schema.ts`: Convex tables and indexes.
 - `convex/specs.ts`: spec queries and mutations, YAML retrieval, archive handling.
 - `convex/requests.ts`: request creation/list/update and request/node status validators.
@@ -31,6 +38,8 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `convex/http.ts`: bearer-authenticated worker HTTP endpoints.
 - `convex/authTokens.ts`: internal auth-token lookup, creation, updates, revocation, and last-used tracking.
 - `convex/notifications.ts`: notification query, read/dismiss mutations, and internal creation.
+- `convex/auth.ts`, `convex/auth.config.ts`: Convex Auth password provider, first-account-only registration, and JWT issuer configuration.
+- `convex/authz.ts`: shared guard used by public application queries and mutations.
 - `src-tauri/`: Tauri v2 desktop wrapper and window config.
 - `README.md`: repository entry point.
 
@@ -54,7 +63,10 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - Request creation accepts `specSlug`, `pipelineName`, and `payload`.
 - Worker reports use `POST /hooks/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.
 - Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
-- Auth-token management uses the Convex client API. Worker HTTP hooks remain under `/hooks/` and use bearer tokens.
+- The desktop stores Convex profile names, URLs, remembered account email addresses, and the dark appearance preference in the Tauri app config directory. Profiles include separate client/API and HTTP site URLs; signing out does not remove a profile. The app does not store a Convex admin key or account passwords.
+- Desktop Convex queries/mutations require Convex Auth. Each deployment allows only its first account to register; the backend enforces this during the atomic user-creation mutation, and every authenticated user shares access with no per-user ownership. The client remembers account emails per local server profile but never stores passwords. Worker HTTP hooks remain bearer-token authenticated.
+- Auth-token management is grouped in **Settings → Auth tokens** and uses the Convex client API. Worker HTTP hooks remain under `/hooks/` and use bearer tokens.
+- The sidebar shows the selected Convex server and connection state in a badge by the brand. Disconnecting keeps the app shell and Settings available while clearing only the active profile selection.
 - Workers create notifications with `POST /hooks/notifications/send`, using an active bearer token and a JSON `title`, `message`, and optional string-array `tags`. The desktop subscribes to notifications through Convex; its list is newest-first and limited to 100 in the UI.
 - New notifications received while the desktop window is visible and focused use an in-app toast. Notifications received while unfocused use the Tauri system notification plugin when OS permission is granted; the Notifications page is where users request permission. The initial query is treated as existing history, not as newly arrived notifications.
 - Hook routes and exact JSON contracts are in [docs/worker-hooks.md](docs/worker-hooks.md).
@@ -74,4 +86,4 @@ Request node states include optional `device`, `artifacts`, and `logs` per node.
 
 ## Local environment
 
-`.env.local` is local configuration and must not be committed. This checkout is configured for a self-hosted Convex deployment. `VITE_CONVEX_URL` is the client/API origin; `VITE_CONVEX_SITE_URL` is the HTTP actions origin for worker hooks. See [docs/development.md](docs/development.md).
+`.env.local` is local configuration and must not be committed. This checkout is configured for a self-hosted Convex deployment. Optional `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` values bootstrap the first desktop profile; after that, profiles are managed in the app. See [docs/development.md](docs/development.md).

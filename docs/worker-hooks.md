@@ -7,11 +7,11 @@ Authorization: Bearer <worker-auth-token>
 Content-Type: application/json
 ```
 
-Worker tokens are stored as hashes; plaintext is generated in the browser and shown only at creation time. Never commit or log plaintext tokens. Paths below are relative to the Convex HTTP site URL (`VITE_CONVEX_SITE_URL` locally).
+Worker tokens are stored as hashes; plaintext is generated in the browser and shown only at creation time. Never commit or log plaintext tokens. Paths below are relative to the HTTP site URL of the currently selected Convex server profile (`VITE_CONVEX_SITE_URL` can optionally bootstrap this profile for local development).
 
 ## Auth token management
 
-The desktop calls the public Convex functions `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` directly. No admin key or token-management HTTP route is required. Any client with access to the Convex deployment can manage worker tokens, so use this setup only where that access level is acceptable.
+The desktop calls the public Convex functions `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` directly after Convex Auth sign-in. No admin key or token-management HTTP route is required. Any authenticated user on the deployment can manage worker tokens, so use this setup only where shared access is acceptable.
 
 The browser generates a cryptographically random 256-bit token, computes its SHA-256 hash, and sends only the hash to `authTokens.create`. The plaintext is shown once and cannot be recovered from the token list. Store it in the worker's secret configuration.
 

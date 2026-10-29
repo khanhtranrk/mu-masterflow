@@ -7,6 +7,7 @@ import {
   query,
 } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+import { requireAuthenticated } from "./authz";
 
 const tokenInfo = v.object({
   _id: v.id("authTokens"),
@@ -94,6 +95,7 @@ export const list = query({
   returns: v.array(tokenInfo),
 
   handler: async (ctx, { includeRevoked }) => {
+    await requireAuthenticated(ctx);
     const tokens = await ctx.db
       .query("authTokens")
       .withIndex("by_deleted_at", (q) =>
@@ -145,6 +147,7 @@ export const create = mutation({
   returns: v.id("authTokens"),
 
   handler: async (ctx, { name, tokenHash, expiresAt }) => {
+    await requireAuthenticated(ctx);
     if (!name.trim()) {
       throw new Error("Token name is required");
     }
@@ -180,6 +183,7 @@ export const update = mutation({
   returns: v.null(),
 
   handler: async (ctx, { id, name, expiresAt }) => {
+    await requireAuthenticated(ctx);
     const token = await ctx.db.get(id);
 
     if (!token || token.deletedAt !== undefined) {
@@ -210,6 +214,7 @@ export const revoke = mutation({
   returns: v.null(),
 
   handler: async (ctx, { id }) => {
+    await requireAuthenticated(ctx);
     const token = await ctx.db.get(id);
 
     if (!token || token.deletedAt !== undefined) {

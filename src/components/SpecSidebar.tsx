@@ -1,43 +1,46 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { SpecItem } from "../types";
+import "../sidebar-connection.css";
 
 type SpecSidebarProps = {
   specs: SpecItem[];
   activeSpec?: SpecItem;
   connected: boolean;
+  appAvailable?: boolean;
   dark: boolean;
+  serverName: string;
   specMenuSlug: string | null;
-  authTokensActive: boolean;
   notificationsActive: boolean;
+  settingsActive: boolean;
   notificationCount: number;
   onCreate: () => void;
-  onOpenAuthTokens: () => void;
   onOpenNotifications: () => void;
+  onOpenSettings: () => void;
   onOpen: (spec: SpecItem) => void;
   onToggleMenu: (slug: string) => void;
   onRename: (spec: SpecItem) => void;
   onDelete: (spec: SpecItem) => void;
-  onToggleTheme: () => void;
 };
 
 export function SpecSidebar({
   specs,
   activeSpec,
   connected,
+  appAvailable = true,
   dark,
+  serverName,
   specMenuSlug,
-  authTokensActive,
   notificationsActive,
+  settingsActive,
   notificationCount,
   onCreate,
-  onOpenAuthTokens,
   onOpenNotifications,
+  onOpenSettings,
   onOpen,
   onToggleMenu,
   onRename,
   onDelete,
-  onToggleTheme,
 }: SpecSidebarProps) {
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
 
@@ -68,9 +71,15 @@ export function SpecSidebar({
       <div className="desktop-brand">
         <span className="brand-icon">m</span>
         <span>MasterFlow</span>
-        <span className={connected ? "connection-dot connected" : "connection-dot"} title={connected ? "Connected to Convex" : "Connecting to Convex"} />
+        <span
+          className={`server-name-badge ${connected ? "connected" : "disconnected"}`}
+          title={`${serverName} · ${connected ? "Connected" : appAvailable ? "Connecting" : "Disconnected"}`}
+          aria-label={`Convex server: ${serverName}`}
+        >
+          {serverName}
+        </span>
       </div>
-      <button className="new-space-button" onClick={onCreate}><span>＋</span> New spec</button>
+      <button className="new-space-button" onClick={onCreate} disabled={!appAvailable}><span>＋</span> New spec</button>
       <div className="spaces-heading">SPECS <span>{specs.length}</span></div>
       <div className="space-list">
         {specs.map((spec) => {
@@ -107,15 +116,13 @@ export function SpecSidebar({
           );
         })}
       </div>
-      {specs.length === 0 && <div className="sidebar-empty">Create a spec to get started.</div>}
+      {specs.length === 0 && <div className="sidebar-empty">{appAvailable ? "Create a spec to get started." : "Connect a server to load specs."}</div>}
       <div className="sidebar-bottom">
-        <div className="sidebar-status">{connected ? "Convex connected" : "Connecting to Convex"}</div>
-        <button className={`theme-button auth-token-nav ${notificationsActive ? "selected" : ""}`} onClick={onOpenNotifications}>
+        {appAvailable && <button className={`theme-button auth-token-nav ${notificationsActive ? "selected" : ""}`} onClick={onOpenNotifications}>
           <span aria-hidden="true">♧</span> Notifications
           {notificationCount > 0 && <span className="sidebar-notification-count">{notificationCount > 99 ? "99+" : notificationCount}</span>}
-        </button>
-        <button className={`theme-button auth-token-nav ${authTokensActive ? "selected" : ""}`} onClick={onOpenAuthTokens}><span>⌘</span> Auth tokens</button>
-        <button className="theme-button" onClick={onToggleTheme}><span>{dark ? "☼" : "☾"}</span> {dark ? "Light appearance" : "Dark appearance"}</button>
+        </button>}
+        <button className={`theme-button auth-token-nav ${settingsActive ? "selected" : ""}`} onClick={onOpenSettings}><span>⚙</span> Settings</button>
       </div>
     </aside>
   );

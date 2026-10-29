@@ -5,9 +5,11 @@
 ```text
 Tauri desktop window
   └─ React + Vite UI (src/)
-       └─ Convex React client
-            ├─ public queries/mutations for specs and requests
-            └─ reactive updates from worker HTTP hooks
+       └─ Connection controller
+            ├─ saved Convex server profiles
+            └─ Convex React client for the selected profile
+                 ├─ public queries/mutations for specs and requests
+                 └─ reactive updates from worker HTTP hooks
 
 Mu workers
   └─ Convex HTTP routes (convex/http.ts)
@@ -15,6 +17,10 @@ Mu workers
 ```
 
 The app is a Tauri v2 desktop shell around a web frontend. Convex is the shared persistence and realtime layer. The desktop UI uses Convex queries and mutations; workers use HTTP hooks authenticated with a bearer token.
+
+The connection controller loads server profiles and the saved appearance preference before mounting the Convex Auth provider. Tauri stores profile names, endpoint URLs, remembered account emails, and the dark-mode flag in its app config directory; browser preview uses local storage. A profile stores separate client/API and HTTP site URLs. Signing out of a user account preserves the selected server; disconnecting clears only the active selection, keeps all profiles, and leaves the Settings workspace visible so another server can be selected. Removing a profile is a separate action. The app does not store a Convex admin key. Account, appearance, server, and worker auth-token management are grouped in the Settings page. The login screen uses its own server-selection dialog, while Settings uses an inline server panel.
+
+The desktop supports email/password sign-in and registration of the first account on a deployment. Public app queries and mutations call a shared authentication guard; calls without a Convex Auth user are rejected. The `createOrUpdateUser` mutation callback checks for an existing user and atomically rejects subsequent account creation, while a public status query only controls whether the UI offers registration. Remembered account emails belong to a local server profile, while passwords are never saved. Convex Auth session tokens are namespaced by deployment URL. The single account has access to all application data; there is no per-user ownership model. Worker HTTP hooks retain their separate bearer-token authorization. The sidebar displays the selected server name in a status-colored badge.
 
 ## Tables
 
@@ -75,7 +81,13 @@ The UI creates a request with a chosen `pipelineName` and parameter `payload`. A
 - `src/request-details.css`: request node-state, artifact, log, and unit details.
 - `src/auth-tokens.css`: auth-token administration UI.
 - `src/components/NotificationsView.tsx` and `src/notifications.css`: notification list, unread state, and system-notification permission UI.
-- `src/main.tsx`: Convex client initialization and provider.
+- `src/main.tsx`: React root and dynamic Convex connection provider.
+- `src/connectionSettings.ts`: profile types, URL validation, and browser/native persistence bridge.
+- `src/components/ConnectionController.tsx`: profile loading, dynamic Convex client lifecycle, and first-run connection gate.
+- `src/components/ServerSettingsPanel.tsx`: inline saved-server management in Settings.
+- `src/components/LoginServerDialog.tsx`: login-specific server selection and profile editor.
+- `src/components/DisconnectedRoot.tsx`: persistent workspace/settings shell for choosing a server while disconnected.
+- `src/components/AuthenticatedRoot.tsx`: authenticated-state gate, saved-account chooser, and password sign-in/sign-up UI.
 
 ## Backend map
 
@@ -87,7 +99,11 @@ The UI creates a request with a chosen `pipelineName` and parameter `payload`. A
 - `convex/authTokens.ts`: public token-management queries/mutations and internal worker-token lookup.
 - `convex/notifications.ts`: notification listing, read marking, dismissal, and internal creation.
 
-The desktop calls `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` through Convex's normal reactive client API. These functions are public, so anyone with access to the Convex deployment can manage worker tokens. The browser generates the random token and sends only its SHA-256 hash to Convex; plaintext is shown once and is never available to list/get operations.
+The desktop calls `authTokens.list`, `authTokens.create`, `authTokens.update`, and `authTokens.revoke` through Convex's normal reactive client API after signing in. The browser generates the random token and sends only its SHA-256 hash to Convex; plaintext is shown once and is never available to list/get operations.
+
+Tauri commands `load_connection_settings` and `save_connection_settings` persist profile metadata under the platform app config directory. They store endpoint URLs only; CLI admin credentials remain in the developer's environment and are not part of desktop settings.
+
+Convex Auth requires `JWT_PRIVATE_KEY` and `JWKS` on each deployment. `auth.config.ts` validates JWTs against that deployment's `CONVEX_SITE_URL`. Do not share signing keys across independently administered deployments.
 
 ## Runtime node states
 

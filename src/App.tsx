@@ -5,14 +5,17 @@ import { parse, stringify } from "yaml";
 import { ConfigEditor } from "./components/ConfigEditor";
 import { PipelineEditor } from "./components/PipelineEditor";
 import { RequestsView } from "./components/RequestsView";
-import { AuthTokensView } from "./components/AuthTokensView";
 import { NotificationsView } from "./components/NotificationsView";
+import { SettingsView } from "./components/SettingsView";
 import { SpecHeader, SectionTabs } from "./components/SpecHeader";
 import { SpecSidebar } from "./components/SpecSidebar";
 import { SpecDialogs } from "./components/SpecDialogs";
 import { WorkloadsEditor } from "./components/WorkloadsEditor";
 import { asObject, starterYaml } from "./specUtils";
 import { sendSystemNotification } from "./systemNotifications";
+import { useAuthActions } from "@convex-dev/auth/react";
+import type { ConvexServerProfile } from "./connectionSettings";
+import type { ConnectionSettings } from "./connectionSettings";
 import type { ConfigTab, PipelineNode, RequestItem, SpecItem } from "./types";
 import "./App.css";
 import "./graph.css";
@@ -20,11 +23,30 @@ import "./space-actions.css";
 import "./request-details.css";
 import "./auth-tokens.css";
 import "./notifications.css";
+import "./settings.css";
 
-function App() {
+type AppProps = {
+  serverProfile: ConvexServerProfile;
+  darkMode: boolean;
+  onSetDarkMode: (darkMode: boolean) => Promise<void>;
+  serverSettings: ConnectionSettings;
+  onSaveServerSettings: (settings: ConnectionSettings) => Promise<void>;
+  onConnectServer: (profileId: string) => Promise<void>;
+  onDisconnectServer: () => Promise<void>;
+};
+
+function App({
+  serverProfile,
+  darkMode,
+  onSetDarkMode,
+  serverSettings,
+  onSaveServerSettings,
+  onConnectServer,
+  onDisconnectServer,
+}: AppProps) {
   const [activeSpecSlug, setActiveSpecSlug] = useState("");
-  const [authTokensActive, setAuthTokensActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
+  const [settingsActive, setSettingsActive] = useState(false);
   const [incomingNotification, setIncomingNotification] = useState<{ title: string; message: string } | null>(null);
   const [activePipeline, setActivePipeline] = useState("");
   const [selectedNodeName, setSelectedNodeName] = useState("");
@@ -40,7 +62,6 @@ function App() {
   const [specMenuSlug, setSpecMenuSlug] = useState<string | null>(null);
   const [creatingSpec, setCreatingSpec] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<string | null>(null);
-  const [dark, setDark] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -48,6 +69,7 @@ function App() {
   const [workloadDraft, setWorkloadDraft] = useState("");
   const [nodeDraft, setNodeDraft] = useState("");
   const seenNotificationIds = useRef<Set<string> | null>(null);
+  const { signOut } = useAuthActions();
 
   const remoteSpecs = useQuery(api.specs.list, {});
   const remoteNotifications = useQuery(api.notifications.list, { limit: 100 });
@@ -404,8 +426,8 @@ function App() {
   }
 
   function openSpecModal() {
-    setAuthTokensActive(false);
     setNotificationsActive(false);
+    setSettingsActive(false);
     setError("");
     setSpecUploadName("");
     setSpecNameDraft("");
@@ -429,25 +451,34 @@ function App() {
 
   function openSpec(spec: SpecItem) {
     setActiveSpecSlug(spec.slug);
-    setAuthTokensActive(false);
     setNotificationsActive(false);
+    setSettingsActive(false);
     setActiveTab("pipeline");
-    setError("");
-  }
-
-  function openAuthTokens() {
-    setAuthTokensActive(true);
-    setNotificationsActive(false);
-    setModal(null);
     setError("");
   }
 
   function openNotifications() {
     setNotificationsActive(true);
-    setAuthTokensActive(false);
+    setSettingsActive(false);
     setModal(null);
     setError("");
     setIncomingNotification(null);
+  }
+
+  function openSettings() {
+    setSettingsActive(true);
+    setNotificationsActive(false);
+    setModal(null);
+    setError("");
+  }
+
+  async function toggleTheme() {
+    try {
+      await onSetDarkMode(!darkMode);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save appearance settings.");
+    }
   }
 
   function openRename(spec: SpecItem) {
@@ -492,34 +523,53 @@ function App() {
     setModal("request");
   }
 
+  async function signOutAccount() {
+    try {
+      await signOut();
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not sign out.");
+    }
+  }
+
   return (
-    <div className={dark ? "desktop-shell dark" : "desktop-shell"}>
+    <div className={darkMode ? "desktop-shell dark" : "desktop-shell"}>
       <SpecSidebar
         specs={specs}
-        activeSpec={authTokensActive || notificationsActive ? undefined : activeSpec}
+        activeSpec={notificationsActive || settingsActive ? undefined : activeSpec}
         connected={connection.isWebSocketConnected}
-        dark={dark}
+        dark={darkMode}
+        serverName={serverProfile.name}
         specMenuSlug={specMenuSlug}
-        authTokensActive={authTokensActive}
         notificationsActive={notificationsActive}
+        settingsActive={settingsActive}
         notificationCount={unreadNotificationCount}
         onCreate={openSpecModal}
-        onOpenAuthTokens={openAuthTokens}
         onOpenNotifications={openNotifications}
+        onOpenSettings={openSettings}
         onOpen={(spec) => { openSpec(spec); setSpecMenuSlug(null); }}
         onToggleMenu={(slug) => setSpecMenuSlug(specMenuSlug === slug ? null : slug)}
         onRename={openRename}
         onDelete={(spec) => void archiveSpec(spec)}
-        onToggleTheme={() => setDark(!dark)}
       />
       <main className="work-area">
-        {notificationsActive ? (
+        {settingsActive ? (
+          <SettingsView
+            serverProfile={serverProfile}
+            serverSettings={serverSettings}
+            darkMode={darkMode}
+            error={error}
+            onSaveServerSettings={onSaveServerSettings}
+            onConnectServer={onConnectServer}
+            onDisconnectServer={onDisconnectServer}
+            onToggleTheme={() => void toggleTheme()}
+            onSignOut={() => void signOutAccount()}
+          />
+        ) : notificationsActive ? (
           <div className="editor-scroll">
             <NotificationsView />
             {error && <div className="inline-error">{error}<button onClick={() => setError("")}>×</button></div>}
           </div>
-        ) : authTokensActive ? (
-          <div className="editor-scroll"><AuthTokensView /></div>
         ) : activeSpec ? (
           <>
             <SpecHeader

@@ -8,18 +8,26 @@
 
 ## Environment
 
-Create `.env.local` in the project root:
+For desktop use, add one or more Convex server profiles from the app's first-launch screen, the dedicated server dialog on the sign-in screen, or **Settings → Manage servers**. Each profile has a client/API URL and an HTTP site URL. The native app stores these non-secret values in the Tauri app config directory. Signing out of an account preserves the selected server; **Disconnect** clears the current selection without removing saved profiles. The browser development preview stores profiles in browser local storage.
+
+Open **Settings** in the sidebar to manage saved Convex servers, worker auth tokens, sign out, or switch between light and dark appearance. Server profiles are managed inline in Settings; the sign-in screen uses a separate server-selection dialog. Disconnecting keeps the workspace and Settings visible, clears only the active connection, and leaves saved profiles available to connect again. The selected server name and connection state appear in a badge beside the sidebar logo. The appearance preference is persisted alongside the local connection settings (Tauri app config on desktop, browser local storage in preview).
+
+Convex Auth is enabled separately on every Convex deployment. Configure `JWT_PRIVATE_KEY` and `JWKS` on each deployment using securely generated RS256 keys; never commit these values or put them in the desktop app. The deployment's `CONVEX_SITE_URL` is used as the JWT issuer. After syncing the Convex code, the first account can register with email and password; each deployment rejects registration once an account exists. The backend enforces the limit in the user-creation mutation, including concurrent registration attempts. There is no password-reset flow yet, so protect the single account's credentials and plan an administrator recovery procedure.
+
+The app remembers account email addresses per server profile in the app settings, allowing users to select a previous account after signing out or when a session expires. These email addresses are local profile metadata; passwords are never stored. Convex Auth persists session tokens using its client storage scoped to the deployment URL; signing out clears the active auth session without disconnecting the saved server.
+
+Existing local setups can optionally bootstrap the first profile from `.env.local`:
 
 ```dotenv
-VITE_CONVEX_URL=<Convex client/API URL used by the app>
-VITE_CONVEX_SITE_URL=<Convex HTTP site URL used by the UI and workers>
+VITE_CONVEX_URL=<optional initial Convex client/API URL>
+VITE_CONVEX_SITE_URL=<optional initial Convex HTTP site URL>
 CONVEX_SELF_HOSTED_URL=<self-hosted Convex API URL used by the CLI>
 CONVEX_SELF_HOSTED_ADMIN_KEY=<self-hosted Convex CLI admin key>
 ```
 
 For the standard self-hosted Docker setup, the backend API/client URL is `http://127.0.0.1:3210`, while the HTTP actions/site URL is `http://127.0.0.1:3211`. Do not point `VITE_CONVEX_SITE_URL` at port 3210. The CLI uses `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` to connect to the self-hosted instance.
 
-Keep `.env.local` out of source control. Auth tokens are managed through regular Convex client queries and mutations; no additional admin key or token-management HTTP configuration is required. The UI generates a random bearer token in the browser, stores only its SHA-256 hash in Convex, and shows the plaintext once. Anyone with access to the Convex deployment can create, edit, list, or revoke worker tokens. Store each plaintext token in the corresponding worker's secret configuration.
+Keep `.env.local` out of source control. `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` are for the Convex CLI only; MasterFlow does not ask for or store an admin key. App queries and mutations require an authenticated Convex Auth session. Worker HTTP hooks remain separately protected by worker bearer tokens; the authenticated desktop manages token metadata through the Convex client API. The UI generates a random bearer token in the browser, stores only its SHA-256 hash in Convex, and shows the plaintext once. Store each plaintext token in the corresponding worker's secret configuration.
 
 ## Run locally
 
@@ -78,8 +86,9 @@ bunx --bun convex run requests:list '{"specSlug":"song-with-cover"}' --push
 
 ## Troubleshooting
 
-- **UI says connecting to Convex:** check `VITE_CONVEX_URL` and ensure the self-hosted backend API is running and reachable from the desktop webview.
+- **UI says connecting to Convex:** open **Settings → Manage servers**, verify the selected profile's client/API URL, and ensure the backend is running and reachable from the desktop webview.
 - **Auth token manager cannot load tokens:** check that the desktop is connected to the expected Convex deployment and that the `authTokens.list` query is available in the synced functions.
+- **Authentication fails:** confirm Convex Auth has been synced to that server, `JWT_PRIVATE_KEY` and `JWKS` are configured there, and use the exact email/password for the single account on that deployment. A deployment with an existing user cannot register another account.
 - **Worker hook returns `401`:** verify the worker bearer token is active, unexpired, and sent as a bearer token in the `Authorization` header.
 - **Claim returns `[]`:** verify the request is `waiting` and the spec slug matches.
 - **Build cannot write `.vite-temp`:** use `bunx --bun vite build --configLoader runner` or a writable checkout.

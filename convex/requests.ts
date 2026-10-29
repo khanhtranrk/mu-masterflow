@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { parse } from "yaml";
+import { requireAuthenticated } from "./authz";
 
 const requestStatus = v.union(
   v.literal("waiting"), v.literal("possessed"), v.literal("processing"),
@@ -10,7 +11,10 @@ const requestStatus = v.union(
 export const list = query({
   args: { specSlug: v.string() },
   returns: v.array(v.any()),
-  handler: async (ctx, { specSlug }) => ctx.db.query("requests").withIndex("by_spec_slug", q => q.eq("specSlug", specSlug)).order("desc").take(100),
+  handler: async (ctx, { specSlug }) => {
+    await requireAuthenticated(ctx);
+    return ctx.db.query("requests").withIndex("by_spec_slug", q => q.eq("specSlug", specSlug)).order("desc").take(100);
+  },
 });
 
 export const create = mutation({
@@ -21,6 +25,7 @@ export const create = mutation({
   },
   returns: v.id("requests"),
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx);
     const spec = await ctx.db.query("specs").withIndex("by_slug", q => q.eq("slug", args.specSlug)).first();
     if (!spec) throw new Error("Spec not found");
 
@@ -54,6 +59,7 @@ export const update = mutation({
   },
   returns: v.id("requests"),
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx);
     const { id, ...patch } = args;
     const request = await ctx.db.get(id);
     if (!request)

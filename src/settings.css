@@ -1,0 +1,166 @@
+.settings-scroll {
+  padding: 38px clamp(22px, 5vw, 72px);
+}
+
+.settings-page {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  color: var(--text);
+}
+
+.settings-heading {
+  margin-bottom: 30px;
+}
+
+.settings-eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.settings-heading h1 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.035em;
+}
+
+.settings-heading > p:last-child {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-section-copy h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.settings-section-copy p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-server {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.settings-server-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.settings-server-section > .server-settings-panel {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.settings-server-details {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  text-align: right;
+}
+
+.settings-server-details strong {
+  font-size: 12px;
+}
+
+.settings-server-details span {
+  max-width: min(340px, 35vw);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.settings-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.settings-action:hover {
+  background: var(--soft);
+}
+
+.settings-sign-out {
+  color: #b54740;
+}
+
+.settings-error {
+  color: #b42318;
+  font-size: 12px;
+}
+
+.settings-auth-tokens {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.settings-auth-tokens > .auth-tokens-view {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 10px 0 0;
+}
+
+.settings-auth-tokens > .auth-tokens-view .view-heading {
+  display: none;
+}
+
+.dark .settings-sign-out {
+  color: #ef9b94;
+}
+
+@media (max-width: 620px) {
+  .settings-scroll {
+    padding: 26px 18px;
+  }
+
+  .settings-section,
+  .settings-server {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-server-section {
+    display: flex;
+  }
+
+  .settings-auth-tokens {
+    display: flex;
+  }
+
+  .settings-server-details {
+    text-align: left;
+  }
+
+  .settings-server-details span {
+    max-width: 75vw;
+  }
+}

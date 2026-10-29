@@ -4,6 +4,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
+import { requireAuthenticated } from "./authz";
 
 // Create notification from HTTP hooks or internal workflows.
 export const create = internalMutation({
@@ -41,6 +42,7 @@ export const list = query({
   ),
 
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx);
     const notifications = await ctx.db
       .query("notifications")
       .withIndex("by_deleted_at", (q) =>
@@ -61,6 +63,7 @@ export const markRead = mutation({
   returns: v.null(),
 
   handler: async (ctx, { id }) => {
+    await requireAuthenticated(ctx);
     const notification = await ctx.db.get(id);
 
     if (!notification || notification.deletedAt !== undefined) {
@@ -85,6 +88,7 @@ export const remove = mutation({
   returns: v.null(),
 
   handler: async (ctx, { id }) => {
+    await requireAuthenticated(ctx);
     const notification = await ctx.db.get(id);
 
     if (!notification || notification.deletedAt !== undefined) {

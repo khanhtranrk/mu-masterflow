@@ -28,6 +28,18 @@
 .auth-token-actions { flex: none; }
 .subtle-button.danger { color: #ad514d; }
 .auth-token-edit { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto auto; align-items: end; gap: 8px; padding-top: 9px; border-top: 1px solid var(--line); }
+.server-profile-form { margin-bottom: 18px; }
+.server-profile-form-fields { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: end; gap: 10px; }
+.server-profile-form-fields label:first-child { grid-column: 1/-1; }
+.server-profile-help { grid-column: 1/-1; margin: -2px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.server-profile-form-actions { grid-column: 1/-1; display: flex; justify-content: flex-end; gap: 8px; }
+.server-profile-card>small { overflow-wrap: anywhere; }
+.server-profile-title { min-width: 0; }
+.server-profile-title>b { max-width: min(40vw, 320px); }
+.server-settings-panel .view-heading { margin-bottom: 16px; }
+.server-settings-panel .view-heading h2 { font-size: 16px; }
+.server-settings-panel .view-heading p { max-width: 560px; }
+.server-settings-panel .auth-token-list-heading>span { color: var(--muted); font-size: 9px; }
 .auth-token-lock { margin-top: 12px; }
 .auth-token-nav.selected { background: var(--accent-soft); color: var(--accent); }
 .dark .auth-token-once { border-color: #385441; background: #26332a; }
@@ -35,7 +47,8 @@
 .dark .auth-token-status.active { background: #27382d; color: #a4d5b0; }
 .dark .auth-token-status.revoked,.dark .auth-token-status.expired { background: #3a2828; color: #e6a3a0; }
 @media (max-width: 760px) {
-  .auth-token-form-fields,.auth-token-edit { grid-template-columns: minmax(0,1fr); align-items: stretch; }
+  .auth-token-form-fields,.auth-token-edit,.server-profile-form-fields { grid-template-columns: minmax(0,1fr); align-items: stretch; }
+  .server-profile-form-fields label:first-child,.server-profile-help,.server-profile-form-actions { grid-column: auto; }
   .auth-token-once { grid-template-columns: minmax(0,1fr); }
   .auth-token-card-heading { align-items: flex-start; }
 }
