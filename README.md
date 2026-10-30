@@ -29,3 +29,12 @@ A spec is stored as one complete YAML string in Convex; there is no separate spa
 Worker hooks are documented in [docs/worker-hooks.md](docs/worker-hooks.md). Units (Workers) use Unit tokens managed from **Settings → Unit tokens** through regular Convex queries and mutations. The token manager stores only token hashes; the generated plaintext is shown once when a token is created. Anyone who can sign in to the Convex deployment can manage these tokens.
 
 The worker hook `POST /api/notifications/send` can create a notification for the desktop. See [Worker HTTP hooks](docs/worker-hooks.md) for its request and response contract.
+
+
+## Mu worker lifecycle
+
+Workers use `mu master-flow run <spec-slug>` with `MU_MASTER_FLOW_SERVER`
+(HTTP site URL) and `MU_MASTER_FLOW_TOKEN`, overridden by `--server` / `--token`.
+Specs declare `entries.direct_flow` / `entries.master_flow` initialization and
+finalization, plus lazy `pipeline.<name>.prepare`. See [spec lifecycle](docs/spec-yaml.md#worker-lifecycle)
+and [worker API / batch options](docs/worker-hooks.md#mu-cli-integration).

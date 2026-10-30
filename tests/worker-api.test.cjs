@@ -117,9 +117,9 @@ test('inspection and claim apply all eight filter combinations before limiting',
     });
     rows.unshift({ ...rows[7], _id: 'different-spec', specSlug: 'other' });
     const filters = {
-      ...(mask & 1 ? { by_pipeline: 'main' } : {}),
-      ...(mask & 2 ? { by_status: 'custom-state' } : {}),
-      ...(mask & 4 ? { by_unit_id: 'previous' } : {}),
+      ...(mask & 1 ? { byPipeline: 'main' } : {}),
+      ...(mask & 2 ? { byStatus: 'custom-state' } : {}),
+      ...(mask & 4 ? { byUnitId: 'previous' } : {}),
     };
     const expected = rows.filter(r => r.specSlug === 'demo'
       && (!(mask & 1) || r.pipelineName === 'main')
@@ -148,13 +148,13 @@ test('inspection and claim apply all eight filter combinations before limiting',
 test('GET and claim reject invalid filters and limits and return empty matches', async () => {
   const { http } = setup();
   for (const query of ['specSlug=demo&maxCount=0', 'specSlug=demo&maxCount=1.5',
-    'specSlug=demo&maxCount=', 'specSlug=demo&by_pipeline=',
-    'specSlug=demo&by_status=a&by_status=b', 'maxCount=1']) {
+    'specSlug=demo&maxCount=', 'specSlug=demo&byPipeline=',
+    'specSlug=demo&byStatus=a&byStatus=b', 'maxCount=1']) {
     assert.equal((await http('GET', `/api/requests?${query}`)).status, 400);
   }
   assert.equal((await http('GET', '/api/requests?specSlug=demo', undefined, false)).status, 401);
   assert.deepEqual(await (await http('GET', '/api/requests?specSlug=demo')).json(), []);
-  for (const extra of [{ by_status: 7 }, { by_unit_id: null }, { maxCount: 101 }]) {
+  for (const extra of [{ byStatus: 7 }, { byUnitId: null }, { maxCount: 101 }]) {
     assert.equal((await http('POST', '/api/requests/claim', {
       specSlug: 'demo', unitId: 'receiver', ...extra,
     })).status, 400);
@@ -165,4 +165,31 @@ test('GET and claim reject invalid filters and limits and return empty matches',
   for (const route of ['/api/requests', '/api/requests/create']) {
     assert.equal((await http('OPTIONS', route, undefined, false)).status, 204);
   }
+});
+
+test('array claim filters merge oldest candidates with one global limit', async () => {
+  const { rows, http } = setup();
+  rows.push(
+    { _id: 'old', _creationTime: 1, specSlug: 'demo', pipelineName: 'b', status: 'waiting', payload: {} },
+    { _id: 'middle', _creationTime: 2, specSlug: 'demo', pipelineName: 'a', status: 'custom', payload: {} },
+    { _id: 'new', _creationTime: 3, specSlug: 'demo', pipelineName: 'a', status: 'waiting', payload: {} },
+    { _id: 'excluded', _creationTime: 0, specSlug: 'demo', pipelineName: 'c', status: 'waiting', payload: {} },
+  );
+  const response = await http('POST', '/api/requests/claim', {
+    unitId: 'receiver', specSlug: 'demo', maxCount: 2,
+    byPipeline: ['a', 'b', 'a'], byStatus: ['waiting', 'custom'],
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).map(r => r.requestId), ['old', 'middle']);
+  assert.equal(rows[2].status, 'waiting');
+  assert.equal(rows[3].status, 'waiting');
+  for (const byPipeline of [[], [''], ['a', null]]) {
+    assert.equal((await http('POST', '/api/requests/claim', {
+      unitId: 'receiver', specSlug: 'demo', byPipeline,
+    })).status, 400);
+  }
+  const empty = await http('POST', '/api/requests/claim', {
+    unitId: 'receiver', specSlug: 'demo', byPipeline: ['a', 'b'], byStatus: ['never'],
+  });
+  assert.deepEqual(await empty.json(), []);
 });

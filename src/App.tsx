@@ -227,9 +227,23 @@ function App({
     }
   }
 
-  function changeSection(section: "prepare" | "master-flow", text: string) {
+  function changePipelinePrepare(text: string) {
     try {
-      const value = text.trim() ? parse(text) : section === "prepare" ? [] : {};
+      const value = text.trim() ? parse(text) : [];
+      if (!Array.isArray(value) || value.some(action => !action || typeof action !== "object" || Array.isArray(action))) {
+        throw new Error("Pipeline prepare must be a list of action mappings.");
+      }
+      editDocument(document => {
+        document.pipeline[currentPipelineName].prepare = value;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? `YAML: ${e.message}` : "Invalid YAML");
+    }
+  }
+
+  function changeSection(section: "entries", text: string) {
+    try {
+      const value = text.trim() ? parse(text) : {};
       editDocument((document) => { document[section] = value; });
     } catch (e) {
       setError(e instanceof Error ? `YAML: ${e.message}` : "Invalid YAML");
@@ -588,6 +602,7 @@ function App({
             />
             <div className="editor-scroll">
               {activeTab === "pipeline" && (
+                <>
                 <PipelineEditor
                   pipelineNames={pipelineNames}
                   currentPipelineName={currentPipelineName}
@@ -603,23 +618,22 @@ function App({
                   onToggleDependency={toggleDependency}
                   onChangeNodeDraft={changeNodeDraft}
                 />
+                {currentPipelineName && <ConfigEditor
+                  title="Pipeline prepare"
+                  description={`Prepare ${currentPipelineName} once when its first valid request arrives. Unused pipelines are not prepared.`}
+                  value={stringify(pipelineConfig.prepare ?? []).trimEnd()}
+                  onChange={changePipelinePrepare}
+                  placeholder={'- type: create_dir\n  path: "{session[cache_dir]}/models"'}
+                />}
+                </>
               )}
-              {activeTab === "prepare" && (
+              {activeTab === "entries" && (
                 <ConfigEditor
-                  title="Prepare"
-                  description="Pre-run actions, skip rules, preconditions, and postconditions."
-                  value={stringify(parsed.prepare ?? []).trimEnd()}
-                  onChange={(text) => changeSection("prepare", text)}
-                  placeholder={'- type: execute-commands\n  commands:\n    - target: hf\n      args: [download, repo, model.gguf]'}
-                />
-              )}
-              {activeTab === "master-flow" && (
-                <ConfigEditor
-                  title="Master flow"
-                  description="URL based request sources, pipeline assignment, headers, and refresh behavior."
-                  value={stringify(parsed["master-flow"] ?? {}).trimEnd()}
-                  onChange={(text) => changeSection("master-flow", text)}
-                  placeholder={'requests:\n  - url: "https://..."\n    header: {}\n    pipeline: song-with-cover\n    refresh_after_done: true'}
+                  title="Entries"
+                  description="Initialization and finalization actions for direct_flow and master_flow. Pipeline setup belongs in pipeline prepare."
+                  value={stringify(parsed.entries ?? {}).trimEnd()}
+                  onChange={(text) => changeSection("entries", text)}
+                  placeholder={'direct_flow:\n  initialization: []\n  finalization: []\nmaster_flow:\n  initialization: []\n  finalization: []'}
                 />
               )}
               {activeTab === "spec-yaml" && (

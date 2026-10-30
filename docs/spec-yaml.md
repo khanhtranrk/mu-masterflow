@@ -4,7 +4,7 @@
 
 MasterFlow saves the entire spec document as the `yaml` string on its Convex `specs` document. A spec can contain sections beyond those currently rendered by the UI. Preserve these sections and unknown fields when editing one part.
 
-The desktop has views for `prepare`, `master-flow`, `workloads`, `pipeline`, requests, and complete YAML editing. These are conveniences over the same YAML document, not separate storage models.
+The desktop has views for `entries`, `workloads`, `pipeline`, requests, and complete YAML editing. These are conveniences over the same YAML document, not separate storage models.
 
 ## Pipeline model
 
@@ -51,3 +51,13 @@ Runtime node statuses are `queue`, `running`, `failed`, and `succeeded`. Node st
 - Allow each spec to define arbitrary pipeline names and workloads.
 - Do not mirror `params` or `nodes` into Convex spec fields; raw YAML is authoritative.
 - Fields not rendered in a dedicated view must survive edits elsewhere and remain editable via full YAML.
+
+
+## Worker lifecycle
+
+Use `entries.direct_flow` and `entries.master_flow`, each with action lists
+`initialization` and `finalization`. Root `prepare` and `master-flow.requests`
+were removed from Mu. Put pipeline-specific preparation under
+`pipeline.<name>.prepare`: it runs only when a valid request uses that pipeline,
+once per worker invocation across batches. The Pipeline view edits preparation for the selected pipeline. Complete YAML editing preserves all
+pipeline fields, including prepare. Existing stored YAML is not auto-migrated.

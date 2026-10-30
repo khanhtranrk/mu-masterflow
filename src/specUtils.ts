@@ -2,14 +2,13 @@ import type { PipelineNode } from "./types";
 
 export const tabs = [
   { id: "pipeline", label: "Pipeline" },
-  { id: "prepare", label: "Prepare" },
+  { id: "entries", label: "Entries" },
   { id: "workloads", label: "Workloads" },
-  { id: "master-flow", label: "Master flow" },
   { id: "spec-yaml", label: "Spec YAML" },
   { id: "requests", label: "Requests" },
 ] as const;
 
-export const starterYaml = `master-flow:\n  requests: []\nprepare: []\nworkloads: {}\npipeline:\n  main:\n    params: {}\n    nodes: []\n`;
+export const starterYaml = `entries:\n  direct_flow:\n    initialization: []\n    finalization: []\n  master_flow:\n    initialization: []\n    finalization: []\nworkloads: {}\npipeline:\n  main:\n    prepare: []\n    params: {}\n    nodes: []\n`;
 
 export const asObject = (value: unknown): Record<string, any> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};

@@ -17,24 +17,31 @@ function requiredString(value: unknown, name: string): string {
   return value;
 }
 
+function selectionFilter(value: unknown, name: string): string | string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return requiredString(value, name);
+  if (!value.length || value.length > 100) {
+    throw new Error(`${name} must contain 1–100 non-empty strings`);
+  }
+  return [...new Set(value.map(item => requiredString(item, name)))];
+}
+
 function parseSelection(data: Record<string, unknown>) {
   const specSlug = requiredString(data.specSlug, "specSlug");
   const maxCount = data.maxCount ?? 1;
   if (!Number.isInteger(maxCount) || Number(maxCount) < 1 || Number(maxCount) > 100) {
     throw new Error("maxCount must be an integer from 1 to 100");
   }
-  const by_pipeline = data.by_pipeline === undefined
-    ? undefined : requiredString(data.by_pipeline, "by_pipeline");
-  const by_unit_id = data.by_unit_id === undefined
-    ? undefined : requiredString(data.by_unit_id, "by_unit_id");
-  const by_status = data.by_status === undefined
-    ? undefined : requiredString(data.by_status, "by_status");
+  const byPipeline = selectionFilter(data.byPipeline, "byPipeline");
+  const byUnitId = data.byUnitId === undefined
+    ? undefined : requiredString(data.byUnitId, "byUnitId");
+  const byStatus = selectionFilter(data.byStatus, "byStatus");
   return {
     specSlug,
     maxCount: maxCount as number,
-    ...(by_pipeline !== undefined ? { by_pipeline } : {}),
-    ...(by_unit_id !== undefined ? { by_unit_id } : {}),
-    ...(by_status !== undefined ? { by_status } : {}),
+    ...(byPipeline !== undefined ? { byPipeline } : {}),
+    ...(byUnitId !== undefined ? { byUnitId } : {}),
+    ...(byStatus !== undefined ? { byStatus } : {}),
   };
 }
 
@@ -353,7 +360,7 @@ http.route({
     try {
       const params = new URL(request.url).searchParams;
       const data: Record<string, unknown> = {};
-      for (const key of ["specSlug", "maxCount", "by_pipeline", "by_status", "by_unit_id"]) {
+      for (const key of ["specSlug", "maxCount", "byPipeline", "byStatus", "byUnitId"]) {
         const values = params.getAll(key);
         if (values.length > 1) throw new Error(`${key} must occur only once`);
         if (values.length) data[key] = values[0];

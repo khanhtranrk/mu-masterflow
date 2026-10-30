@@ -124,7 +124,7 @@ Other validation messages: `Request body must be an object`, `unitId is required
 
 ## 3. Claim work — `POST /api/requests/claim`
 
-The unit must already be registered through a heartbeat. The mutation selects matching requests for `specSlug`, oldest first, changes their status to `possessed`, and records `unitId` and `claimedAt` in the same transaction. Selection and assignment are atomic. With `by_status: "waiting"`, competing workers cannot claim the same waiting request. Broader filters may intentionally match and reassign a request after an earlier claim commits. A successful claim also updates the unit's `lastSeen`.
+The unit must already be registered through a heartbeat. The mutation selects matching requests for `specSlug`, oldest first, changes their status to `possessed`, and records `unitId` and `claimedAt` in the same transaction. Selection and assignment are atomic. With `byStatus: "waiting"`, competing workers cannot claim the same waiting request. Broader filters may intentionally match and reassign a request after an earlier claim commits. A successful claim also updates the unit's `lastSeen`.
 
 ### Body
 
@@ -134,17 +134,24 @@ The unit must already be registered through a heartbeat. The mutation selects ma
 | `specSlug` | string | Yes | Must not be empty or whitespace-only; identifies the spec. |
 | `maxCount` | integer | No | From `1` to `100`; defaults to `1` when omitted or `null`. |
 
-Claim selects requests by slug and the optional filters below. Omitted filters impose no restriction: **there is no default status filter**. Without `by_status`, requests in any state can be claimed, including previously claimed or completed requests. All matches are changed to `possessed` and assigned to the receiving `unitId`.
+Claim selects requests by slug and the optional filters below. Omitted filters impose no restriction: **there is no default status filter**. Without `byStatus`, requests in any state can be claimed, including previously claimed or completed requests. All matches are changed to `possessed` and assigned to the receiving `unitId`.
 
 | Optional body field | Type | Match |
 | --- | --- | --- |
-| `by_pipeline` | non-empty string | Exact `pipelineName`. |
-| `by_status` | non-empty string | Exact stored status; any string is accepted, including custom values. |
-| `by_unit_id` | non-empty string | Exact currently assigned `unitId`, before claim overwrites it. |
+| `byPipeline` | non-empty string or string[] | Match any listed `pipelineName`. |
+| `byStatus` | non-empty string or string[] | Match any listed status, including custom values. |
+| `byUnitId` | non-empty string | Exact currently assigned `unitId`, before claim overwrites it. |
 
-Filters combine with AND and run through matching compound indexes before `maxCount` is applied. Omit a filter to disable it; `null`, empty strings, and whitespace-only strings are rejected. `unitId` is the receiving worker, while `by_unit_id` filters the previous assignment. Requests without an assigned unit do not match a supplied `by_unit_id`.
+Claim accepts a string or a non-empty array (up to 100 non-empty strings) for
+`byPipeline` and `byStatus`; duplicate values are ignored. Values combine with OR
+within a filter, AND between filters. At most 100 distinct pipeline/status
+combinations are allowed. Each combination uses its compound index; candidates
+are merged oldest-first before the global `maxCount` limit, then claimed in the
+same atomic mutation. Existing string callers retain their behavior.
 
-Claim does not filter by unit online status or spec enabled/archive flags. If no request matches, it returns `[]` rather than `404`. To claim only waiting work, explicitly send `"by_status": "waiting"`.
+Filters combine with AND and run through matching compound indexes before `maxCount` is applied. Omit a filter to disable it; `null`, empty strings, and whitespace-only strings are rejected. `unitId` is the receiving worker, while `byUnitId` filters the previous assignment. Requests without an assigned unit do not match a supplied `byUnitId`.
+
+Claim does not filter by unit online status or spec enabled/archive flags. If no request matches, it returns `[]` rather than `404`. To claim only waiting work, explicitly send `"byStatus": "waiting"`.
 
 ### Example request
 
@@ -159,8 +166,8 @@ Accept: application/json
   "unitId": "mu-karen",
   "specSlug": "song-with-cover",
   "maxCount": 5,
-  "by_pipeline": "song-with-cover",
-  "by_status": "waiting"
+  "byPipeline": "song-with-cover",
+  "byStatus": "waiting"
 }
 ```
 
@@ -215,7 +222,7 @@ Cache-Control: no-store
 
 Missing identifiers produce `unitId is required` or `specSlug is required`. Invalid filters produce `<field> is required`. An unregistered unit causes the mutation to report `Register this unit with a heartbeat before claiming work`; the returned `error` may include Convex error context.
 
-Claim changes stored data: calling it again re-evaluates the filters. With `by_status: "waiting"`, it claims additional waiting requests; without a status filter it may return and reassign previously claimed requests. If a response is lost after the transaction commits, the API has no idempotency or automatic reclaim mechanism to return the same batch.
+Claim changes stored data: calling it again re-evaluates the filters. With `byStatus: "waiting"`, it claims additional waiting requests; without a status filter it may return and reassign previously claimed requests. If a response is lost after the transaction commits, the API has no idempotency or automatic reclaim mechanism to return the same batch.
 
 ## 4. Retrieve configuration — `GET /api/specs/{specSlug}`
 
@@ -522,7 +529,7 @@ curl --include --request POST "$CONVEX_SITE_URL/api/units/heartbeat" \
 curl --include --request POST "$CONVEX_SITE_URL/api/requests/claim" \
   --header "Authorization: Bearer $UNIT_TOKEN" \
   --header 'Content-Type: application/json' \
-  --data '{"unitId":"mu-karen","specSlug":"song-with-cover","maxCount":1,"by_status":"waiting"}'
+  --data '{"unitId":"mu-karen","specSlug":"song-with-cover","maxCount":1,"byStatus":"waiting"}'
 
 curl --include --request GET "$CONVEX_SITE_URL/api/specs/song-with-cover" \
   --header "Authorization: Bearer $UNIT_TOKEN" \
@@ -618,9 +625,9 @@ Reads matching requests without changing request status, assignment, claim times
 | --- | --- | --- | --- |
 | `specSlug` | string | Yes | Non-empty, not whitespace-only; exact spec slug. |
 | `maxCount` | integer | No | `1`–`100`; defaults to `1`. Use decimal digits in the URL. |
-| `by_pipeline` | string | No | Exact pipeline name. |
-| `by_status` | string | No | Exact stored status; accepts any non-empty string. No default status filter. |
-| `by_unit_id` | string | No | Exact currently assigned unit ID. |
+| `byPipeline` | string | No | Exact pipeline name. |
+| `byStatus` | string | No | Exact stored status; accepts any non-empty string. No default status filter. |
+| `byUnitId` | string | No | Exact currently assigned unit ID. |
 
 Optional filters combine with AND, and omitted filters impose no restriction. Supplied filters must be non-empty and not whitespace-only. Each recognized parameter must occur at most once; repeated parameters return `400`. Unknown query parameters are ignored. URL-encode parameter values; do not send a request body.
 
@@ -629,7 +636,7 @@ Results are oldest first, limited after all filters are applied through compound
 ### Example request
 
 ```http
-GET /api/requests?specSlug=song-with-cover&maxCount=5&by_pipeline=song-with-cover&by_status=processing&by_unit_id=mu-karen HTTP/1.1
+GET /api/requests?specSlug=song-with-cover&maxCount=5&byPipeline=song-with-cover&byStatus=processing&byUnitId=mu-karen HTTP/1.1
 Host: localhost:3211
 Authorization: Bearer <UNIT_TOKEN>
 Accept: application/json
@@ -689,9 +696,22 @@ curl --include --get "$CONVEX_SITE_URL/api/requests" \
   --header 'Accept: application/json' \
   --data-urlencode 'specSlug=song-with-cover' \
   --data-urlencode 'maxCount=5' \
-  --data-urlencode 'by_pipeline=song-with-cover' \
-  --data-urlencode 'by_status=processing' \
-  --data-urlencode 'by_unit_id=mu-karen'
+  --data-urlencode 'byPipeline=song-with-cover' \
+  --data-urlencode 'byStatus=processing' \
+  --data-urlencode 'byUnitId=mu-karen'
 ```
 
 Both new paths support the same unauthenticated OPTIONS preflight documented above. The create endpoint adds `201 Created` to the shared status conventions.
+
+
+## Mu CLI integration
+
+`mu master-flow run <spec-slug>` resolves `--server` / `--token` ahead of
+`MU_MASTER_FLOW_SERVER` / `MU_MASTER_FLOW_TOKEN`. Server means HTTP site URL.
+The worker heartbeats online, fetches YAML once, runs master_flow initialization,
+claims and executes a batch, reports overall status, runs finalization and
+heartbeats offline. `--refresh-loop` drains batches until `[]`; failed batches
+stop the loop. `--batch-size` defaults to 1, maximum 100. Repeat `--by-pipeline`
+and `--by-status` for OR filters. Mu defaults to `byStatus: ["waiting"]` even
+though the raw HTTP API has no default status filter. `--unit-id` defaults to
+hostname; `--unit-type` defaults to unknown. Claim is not automatically retried.
