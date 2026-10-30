@@ -1,13 +1,10 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { parse } from "yaml";
 import { requireAuthenticated } from "./authz";
+import type { MutationCtx } from "./_generated/server";
+import { requestStatus, selectionArgs, selectRequests } from "./requestSelection";
 
-const requestStatus = v.union(
-  v.literal("waiting"), v.literal("possessed"), v.literal("processing"),
-  v.literal("process_failed"), v.literal("artifact_available"),
-  v.literal("retrieve_artifact_failed"), v.literal("succeeded"),
-);
 export const list = query({
   args: { specSlug: v.string() },
   returns: v.array(v.any()),
@@ -26,28 +23,7 @@ export const create = mutation({
   returns: v.id("requests"),
   handler: async (ctx, args) => {
     await requireAuthenticated(ctx);
-    const spec = await ctx.db.query("specs").withIndex("by_slug", q => q.eq("slug", args.specSlug)).first();
-    if (!spec) throw new Error("Spec not found");
-
-    const document = parse(spec.yaml) as Record<string, any> | null;
-
-    const pipelines = document && typeof document.pipeline === "object" && !Array.isArray(document.pipeline) ? document.pipeline : {};
-    const pipelineName = args.pipelineName ?? Object.keys(pipelines)[0];
-    const pipeline = pipelineName ? pipelines[pipelineName] : undefined;
-
-    if (args.pipelineName && !pipeline)
-      throw new Error(`Pipeline '${args.pipelineName}' is not defined in this spec`);
-
-    const requestArgs = {
-      specSlug: args.specSlug,
-      payload: args.payload,
-    };
-
-    return ctx.db.insert("requests", {
-      ...requestArgs,
-      pipelineName,
-      status: "waiting"
-    });
+    return createRequest(ctx, args);
   },
 });
 
@@ -125,5 +101,65 @@ export const report = internalMutation({
     });
 
     return id;
+  },
+});
+
+const createArgs = { specSlug: v.string(), pipelineName: v.string(), payload: v.any() };
+
+async function createRequest(
+  ctx: MutationCtx,
+  args: { specSlug: string; pipelineName: string; payload: unknown },
+) {
+  const spec = await ctx.db.query("specs").withIndex("by_slug", q => q.eq("slug", args.specSlug)).first();
+  if (!spec) throw new Error("Spec not found");
+
+  const document = parse(spec.yaml) as Record<string, any> | null;
+
+  const pipelines = document && typeof document.pipeline === "object" && !Array.isArray(document.pipeline) ? document.pipeline : {};
+  const pipelineName = args.pipelineName;
+  const pipeline = pipelineName ? pipelines[pipelineName] : undefined;
+
+  if (args.pipelineName && !pipeline)
+    throw new Error(`Pipeline '${args.pipelineName}' is not defined in this spec`);
+
+  const requestArgs = {
+    specSlug: args.specSlug,
+    payload: args.payload,
+  };
+
+  return ctx.db.insert("requests", {
+    ...requestArgs,
+    pipelineName,
+    status: "waiting"
+  });
+}
+
+// Worker creation only inserts a waiting request; it never claims or executes it.
+export const createFromWorker = internalMutation({
+  args: createArgs,
+  returns: v.id("requests"),
+  handler: createRequest,
+});
+
+export const inspect = internalQuery({
+  args: selectionArgs,
+  returns: v.array(v.object({
+    requestId: v.id("requests"),
+    payload: v.any(),
+    specSlug: v.string(),
+    pipelineName: v.string(),
+    status: v.string(),
+    unitId: v.optional(v.string()),
+  })),
+  handler: async (ctx, args) => {
+    const requests = await selectRequests(ctx, args);
+    return requests.map(request => ({
+      requestId: request._id,
+      payload: request.payload,
+      specSlug: request.specSlug,
+      pipelineName: request.pipelineName,
+      status: request.status,
+      ...(request.unitId !== undefined ? { unitId: request.unitId } : {}),
+    }));
   },
 });

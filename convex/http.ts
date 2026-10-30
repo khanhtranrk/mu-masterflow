@@ -3,6 +3,41 @@ import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { auth } from "./auth";
 
+function objectBody(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Request body must be an object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredString(value: unknown, name: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
+function parseSelection(data: Record<string, unknown>) {
+  const specSlug = requiredString(data.specSlug, "specSlug");
+  const maxCount = data.maxCount ?? 1;
+  if (!Number.isInteger(maxCount) || Number(maxCount) < 1 || Number(maxCount) > 100) {
+    throw new Error("maxCount must be an integer from 1 to 100");
+  }
+  const by_pipeline = data.by_pipeline === undefined
+    ? undefined : requiredString(data.by_pipeline, "by_pipeline");
+  const by_unit_id = data.by_unit_id === undefined
+    ? undefined : requiredString(data.by_unit_id, "by_unit_id");
+  const by_status = data.by_status === undefined
+    ? undefined : requiredString(data.by_status, "by_status");
+  return {
+    specSlug,
+    maxCount: maxCount as number,
+    ...(by_pipeline !== undefined ? { by_pipeline } : {}),
+    ...(by_unit_id !== undefined ? { by_unit_id } : {}),
+    ...(by_status !== undefined ? { by_status } : {}),
+  };
+}
+
 const http = httpRouter();
 auth.addHttpRoutes(http);
 const jsonHeaders = {
@@ -72,6 +107,8 @@ const authorize = async (
 http.route({ path: "/api/notifications/send", method: "OPTIONS", handler: options });
 http.route({ path: "/api/units/heartbeat", method: "OPTIONS", handler: options });
 http.route({ path: "/api/requests/claim", method: "OPTIONS", handler: options });
+http.route({ path: "/api/requests/create", method: "OPTIONS", handler: options });
+http.route({ path: "/api/requests", method: "OPTIONS", handler: options });
 http.route({ path: "/api/requests/report", method: "OPTIONS", handler: options });
 http.route({ pathPrefix: "/api/specs/", method: "OPTIONS", handler: options });
 
@@ -260,35 +297,13 @@ http.route({
     }
 
     try {
-      const body = await request.json() as Record<string, any>;
-
-      if (
-        typeof body.unitId !== "string" ||
-        !body.unitId.trim() ||
-        typeof body.specSlug !== "string" ||
-        !body.specSlug.trim()
-      ) {
-        throw new Error("unitId and specSlug are required");
-      }
-
-      const maxCount = body.maxCount ?? 1;
-
-      if (
-        !Number.isInteger(maxCount) ||
-        maxCount < 1 ||
-        maxCount > 100
-      ) {
-        throw new Error("maxCount must be an integer from 1 to 100");
-      }
-
-      const claimed = await ctx.runMutation(
-        internal.units.claim,
-        {
-          unitId: body.unitId,
-          specSlug: body.specSlug,
-          maxCount,
-        }
-      );
+      const body = objectBody(await request.json());
+      const unitId = requiredString(body.unitId, "unitId");
+      const selection = parseSelection(body);
+      const claimed = await ctx.runMutation(internal.units.claim, {
+        unitId,
+        ...selection,
+      });
 
       return json(claimed);
     } catch (error) {
@@ -300,6 +315,59 @@ http.route({
         },
         400
       );
+    }
+  }),
+});
+
+http.route({
+  path: "/api/requests/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await authorize(ctx, request))) {
+      return json({ error: "Unauthorized: provide an active unit token" }, 401);
+    }
+    try {
+      const body = objectBody(await request.json());
+      const specSlug = requiredString(body.specSlug, "specSlug");
+      const pipelineName = requiredString(body.pipelineName, "pipelineName");
+      if (!Object.prototype.hasOwnProperty.call(body, "payload")) {
+        throw new Error("payload is required");
+      }
+      const requestId = await ctx.runMutation(internal.requests.createFromWorker, {
+        specSlug, pipelineName, payload: body.payload,
+      });
+      return json({ requestId }, 201);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Invalid request" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/api/requests",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await authorize(ctx, request))) {
+      return json({ error: "Unauthorized: provide an active unit token" }, 401);
+    }
+    try {
+      const params = new URL(request.url).searchParams;
+      const data: Record<string, unknown> = {};
+      for (const key of ["specSlug", "maxCount", "by_pipeline", "by_status", "by_unit_id"]) {
+        const values = params.getAll(key);
+        if (values.length > 1) throw new Error(`${key} must occur only once`);
+        if (values.length) data[key] = values[0];
+      }
+      if (data.maxCount !== undefined) {
+        if (!/^\d+$/.test(data.maxCount as string)) {
+          throw new Error("maxCount must be an integer from 1 to 100");
+        }
+        data.maxCount = Number(data.maxCount);
+      }
+      const result = await ctx.runQuery(internal.requests.inspect, parseSelection(data));
+      return json(result);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Invalid request" }, 400);
     }
   }),
 });

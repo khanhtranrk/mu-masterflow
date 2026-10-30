@@ -47,10 +47,12 @@ Accept: application/json
 | Method | Path | Purpose | Successful response |
 | --- | --- | --- | --- |
 | `POST` | `/api/units/heartbeat` | Register or update a unit | `200`, JSON `{ "ok": true }` |
-| `POST` | `/api/requests/claim` | Claim waiting requests | `200`, JSON array |
+| `POST` | `/api/requests/claim` | Claim matching requests | `200`, JSON array |
 | `GET` | `/api/specs/{specSlug}` | Retrieve the original YAML | `200`, YAML |
 | `POST` | `/api/requests/report` | Update request and node state | `200`, JSON `{ "ok": true }` |
 | `POST` | `/api/notifications/send` | Create a desktop notification | `200`, JSON with notification ID |
+| `POST` | `/api/requests/create` | Create a waiting request only | `201`, JSON with request ID |
+| `GET` | `/api/requests` | Inspect matching requests without updating them | `200`, JSON array |
 | `OPTIONS` | The paths above | CORS preflight | `204`, no body |
 
 Integration flow: register the unit with a heartbeat → claim work → fetch YAML using `specSlug` and select the returned `pipelineName` → execute the DAG → report progress/results. Send additional heartbeats to update presence and notifications as needed. The API does not prescribe a heartbeat or polling interval.
@@ -122,7 +124,7 @@ Other validation messages: `Request body must be an object`, `unitId is required
 
 ## 3. Claim work — `POST /api/requests/claim`
 
-The unit must already be registered through a heartbeat. The mutation selects `waiting` requests for `specSlug`, oldest first, changes their status to `possessed`, and records `unitId` and `claimedAt` in the same transaction. Competing workers cannot claim the same request through this endpoint. A successful claim also updates the unit's `lastSeen`.
+The unit must already be registered through a heartbeat. The mutation selects matching requests for `specSlug`, oldest first, changes their status to `possessed`, and records `unitId` and `claimedAt` in the same transaction. Selection and assignment are atomic. With `by_status: "waiting"`, competing workers cannot claim the same waiting request. Broader filters may intentionally match and reassign a request after an earlier claim commits. A successful claim also updates the unit's `lastSeen`.
 
 ### Body
 
@@ -132,7 +134,17 @@ The unit must already be registered through a heartbeat. The mutation selects `w
 | `specSlug` | string | Yes | Must not be empty or whitespace-only; identifies the spec. |
 | `maxCount` | integer | No | From `1` to `100`; defaults to `1` when omitted or `null`. |
 
-Claim selects waiting requests directly by slug. It does not filter by pipeline, unit online status, or spec enabled/archive flags. If no request matches, it returns `[]` rather than `404`.
+Claim selects requests by slug and the optional filters below. Omitted filters impose no restriction: **there is no default status filter**. Without `by_status`, requests in any state can be claimed, including previously claimed or completed requests. All matches are changed to `possessed` and assigned to the receiving `unitId`.
+
+| Optional body field | Type | Match |
+| --- | --- | --- |
+| `by_pipeline` | non-empty string | Exact `pipelineName`. |
+| `by_status` | non-empty string | Exact stored status; any string is accepted, including custom values. |
+| `by_unit_id` | non-empty string | Exact currently assigned `unitId`, before claim overwrites it. |
+
+Filters combine with AND and run through matching compound indexes before `maxCount` is applied. Omit a filter to disable it; `null`, empty strings, and whitespace-only strings are rejected. `unitId` is the receiving worker, while `by_unit_id` filters the previous assignment. Requests without an assigned unit do not match a supplied `by_unit_id`.
+
+Claim does not filter by unit online status or spec enabled/archive flags. If no request matches, it returns `[]` rather than `404`. To claim only waiting work, explicitly send `"by_status": "waiting"`.
 
 ### Example request
 
@@ -146,7 +158,9 @@ Accept: application/json
 {
   "unitId": "mu-karen",
   "specSlug": "song-with-cover",
-  "maxCount": 5
+  "maxCount": 5,
+  "by_pipeline": "song-with-cover",
+  "by_status": "waiting"
 }
 ```
 
@@ -175,7 +189,7 @@ Cache-Control: no-store
 | `specSlug` | Spec containing the execution configuration. |
 | `pipelineName` | Pipeline to execute within the YAML; do not assume it equals the slug. |
 
-The result may contain fewer than `maxCount` items. The response does not include `status`, `unitId`, or `claimedAt`, although these fields have been saved. With no waiting work:
+The result may contain fewer than `maxCount` items. The response does not include `status`, `unitId`, or `claimedAt`, although these fields have been saved. With no matching work:
 
 ```http
 HTTP/1.1 200 OK
@@ -188,7 +202,7 @@ Cache-Control: no-store
 
 ### Errors
 
-`401`: shared token error. `400`: invalid JSON/body, missing `unitId` or `specSlug`, invalid `maxCount`, or an unregistered unit. Example of direct validation:
+`401`: shared token error. `400`: invalid JSON/body, missing `unitId` or `specSlug`, invalid filters or `maxCount`, or an unregistered unit. Example of direct validation:
 
 ```http
 HTTP/1.1 400 Bad Request
@@ -199,9 +213,9 @@ Cache-Control: no-store
 {"error":"maxCount must be an integer from 1 to 100"}
 ```
 
-Missing identifiers produce `unitId and specSlug are required`. An unregistered unit causes the mutation to report `Register this unit with a heartbeat before claiming work`; the returned `error` may include Convex error context.
+Missing identifiers produce `unitId is required` or `specSlug is required`. Invalid filters produce `<field> is required`. An unregistered unit causes the mutation to report `Register this unit with a heartbeat before claiming work`; the returned `error` may include Convex error context.
 
-Claim changes stored data: calling it again claims additional waiting requests. If a response is lost after the transaction commits, the API has no idempotency or automatic reclaim mechanism to return the same batch.
+Claim changes stored data: calling it again re-evaluates the filters. With `by_status: "waiting"`, it claims additional waiting requests; without a status filter it may return and reassign previously claimed requests. If a response is lost after the transaction commits, the API has no idempotency or automatic reclaim mechanism to return the same batch.
 
 ## 4. Retrieve configuration — `GET /api/specs/{specSlug}`
 
@@ -461,6 +475,7 @@ Cache-Control: no-store
 
 | Status | Condition | Recommended handling |
 | --- | --- | --- |
+| `201` | Request created successfully. | Read the returned `requestId`. |
 | `200` | Endpoint completed successfully. | Parse JSON or YAML according to the endpoint and `Content-Type`. |
 | `204` | Successful OPTIONS preflight. | Do not parse a body. |
 | `400` | Invalid JSON/validation or an error caught by the handler. | Inspect `error` and correct the cause before retrying. |
@@ -507,7 +522,7 @@ curl --include --request POST "$CONVEX_SITE_URL/api/units/heartbeat" \
 curl --include --request POST "$CONVEX_SITE_URL/api/requests/claim" \
   --header "Authorization: Bearer $UNIT_TOKEN" \
   --header 'Content-Type: application/json' \
-  --data '{"unitId":"mu-karen","specSlug":"song-with-cover","maxCount":1}'
+  --data '{"unitId":"mu-karen","specSlug":"song-with-cover","maxCount":1,"by_status":"waiting"}'
 
 curl --include --request GET "$CONVEX_SITE_URL/api/specs/song-with-cover" \
   --header "Authorization: Bearer $UNIT_TOKEN" \
@@ -526,3 +541,157 @@ curl --include --request POST "$CONVEX_SITE_URL/api/notifications/send" \
 ```
 
 `--include` displays the HTTP status and response headers for comparison with the examples. Programs should handle HTTP errors explicitly; by default, cURL does not treat an HTTP `4xx` response as a nonzero exit code.
+
+
+## 10. Create a request — `POST /api/requests/create`
+
+Creates exactly one request in `waiting` state. It does not claim the request, assign a unit, execute a pipeline, update unit presence, or send a notification. A heartbeat is not required. As with other endpoints, token authentication may update token usage metadata.
+
+### Body
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `specSlug` | string | Yes | Non-empty, not whitespace-only; must identify an existing spec. |
+| `pipelineName` | string | Yes | Non-empty, not whitespace-only; must identify a pipeline defined in the spec YAML. |
+| `payload` | any JSON value | Yes | Original request input; `null` is allowed, but omitting the field is not. |
+
+The endpoint shares creation logic with the desktop. Existing archived/disabled specs are not excluded. Status, unit assignment, and node states cannot be supplied through this endpoint; extra fields are ignored. Each successful call creates a new request, so retries after a lost response can create duplicates.
+
+### Example request
+
+```http
+POST /api/requests/create HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Content-Type: application/json
+Accept: application/json
+
+{
+  "specSlug": "song-with-cover",
+  "pipelineName": "song-with-cover",
+  "payload": { "name": "Demo", "lyrics": "Example lyrics" }
+}
+```
+
+### Successful response
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"requestId":"<REQUEST_ID>"}
+```
+
+`requestId` is the new Convex request ID. The saved request has `status: "waiting"`, without `unitId`, `claimedAt`, or `nodeStates`.
+
+### Errors
+
+`401`: shared token error. `400`: malformed JSON/body, missing required fields, nonexistent spec, undefined pipeline, or invalid stored YAML. Direct field errors include `specSlug is required`, `pipelineName is required`, and `payload is required`. Mutation errors may include Convex context.
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"error":"payload is required"}
+```
+
+### cURL
+
+```sh
+curl --include --request POST "$CONVEX_SITE_URL/api/requests/create" \
+  --header "Authorization: Bearer $UNIT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"specSlug":"song-with-cover","pipelineName":"song-with-cover","payload":{"name":"Demo"}}'
+```
+
+## 11. Inspect requests — `GET /api/requests`
+
+Reads matching requests without changing request status, assignment, claim timestamps, node states, or unit presence. No heartbeat or receiving `unitId` is required. Token authentication may still update token usage metadata. Results are a snapshot; inspection does not reserve work and another worker can claim it immediately afterward.
+
+### Query parameters
+
+| Parameter | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `specSlug` | string | Yes | Non-empty, not whitespace-only; exact spec slug. |
+| `maxCount` | integer | No | `1`–`100`; defaults to `1`. Use decimal digits in the URL. |
+| `by_pipeline` | string | No | Exact pipeline name. |
+| `by_status` | string | No | Exact stored status; accepts any non-empty string. No default status filter. |
+| `by_unit_id` | string | No | Exact currently assigned unit ID. |
+
+Optional filters combine with AND, and omitted filters impose no restriction. Supplied filters must be non-empty and not whitespace-only. Each recognized parameter must occur at most once; repeated parameters return `400`. Unknown query parameters are ignored. URL-encode parameter values; do not send a request body.
+
+Results are oldest first, limited after all filters are applied through compound indexes. A nonexistent slug or no matching requests returns `200` with `[]`.
+
+### Example request
+
+```http
+GET /api/requests?specSlug=song-with-cover&maxCount=5&by_pipeline=song-with-cover&by_status=processing&by_unit_id=mu-karen HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Accept: application/json
+```
+
+### Successful response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+[
+  {
+    "requestId": "<REQUEST_ID>",
+    "payload": { "name": "Demo", "lyrics": "Example lyrics" },
+    "specSlug": "song-with-cover",
+    "pipelineName": "song-with-cover",
+    "status": "processing",
+    "unitId": "mu-karen"
+  }
+]
+```
+
+The first four fields match the claim response. Inspection additionally returns stored `status` and optional `unitId` (omitted for unassigned requests). It does not include node states or claim timestamps. Claim's response shape remains unchanged.
+
+With no matches:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+[]
+```
+
+### Errors
+
+`401`: shared token error. `400`: missing slug, invalid/empty filters, invalid limits, or duplicate recognized query parameters. Filter errors use `<field> is required`; duplicate errors use `<field> must occur only once`.
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"error":"maxCount must be an integer from 1 to 100"}
+```
+
+### cURL
+
+```sh
+curl --include --get "$CONVEX_SITE_URL/api/requests" \
+  --header "Authorization: Bearer $UNIT_TOKEN" \
+  --header 'Accept: application/json' \
+  --data-urlencode 'specSlug=song-with-cover' \
+  --data-urlencode 'maxCount=5' \
+  --data-urlencode 'by_pipeline=song-with-cover' \
+  --data-urlencode 'by_status=processing' \
+  --data-urlencode 'by_unit_id=mu-karen'
+```
+
+Both new paths support the same unauthenticated OPTIONS preflight documented above. The create endpoint adds `201 Created` to the shared status conventions.

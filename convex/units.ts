@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import { requireAuthenticated } from "./authz";
+import { selectionArgs, selectRequests } from "./requestSelection";
 
 export const list = query({
   args: {},
@@ -62,8 +63,7 @@ export const heartbeat = internalMutation({
 export const claim = internalMutation({
   args: {
     unitId: v.string(),
-    specSlug: v.string(),
-    maxCount: v.number(),
+    ...selectionArgs,
   },
 
   returns: v.array(v.object({
@@ -73,7 +73,8 @@ export const claim = internalMutation({
     pipelineName: v.string(),
   })),
 
-  handler: async (ctx, { unitId, specSlug, maxCount }) => {
+  handler: async (ctx, { unitId, ...selection }) => {
+    const { specSlug } = selection;
     const unit = await ctx.db
       .query("units")
       .withIndex("by_unit_id", q => q.eq("unitId", unitId))
@@ -85,18 +86,11 @@ export const claim = internalMutation({
       );
     }
 
-    const waiting = await ctx.db
-      .query("requests")
-      .withIndex(
-        "by_spec_slug_and_status",
-        q => q.eq("specSlug", specSlug).eq("status", "waiting")
-      )
-      .order("asc")
-      .take(maxCount);
+    const matching = await selectRequests(ctx, selection);
 
     const claimed = [];
 
-    for (const request of waiting) {
+    for (const request of matching) {
       await ctx.db.patch(request._id, {
         status: "possessed",
         unitId,

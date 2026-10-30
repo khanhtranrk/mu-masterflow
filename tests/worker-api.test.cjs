@@ -1,0 +1,168 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const { webcrypto } = require('node:crypto');
+
+// Run application handlers with an isolated in-memory database, without a deployment.
+function setup() {
+  const rows = [];
+  const units = [{ _id: 'unit-record', unitId: 'receiver', lastSeen: 1 }];
+  const routes = [];
+  const cache = new Map();
+  const refs = new Proxy({}, { get: (_, module) => new Proxy({}, {
+    get: (_, name) => `${module}.${name}`,
+  }) });
+  function load(name) {
+    if (cache.has(name)) return cache.get(name);
+    const result = {};
+    cache.set(name, result);
+    const source = fs.readFileSync(path.join(__dirname, '../convex', `${name}.ts`), 'utf8');
+    const compiled = ts.transpileModule(source, { compilerOptions: {
+      module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
+    } }).outputText;
+    const localRequire = id => {
+      if (id === './_generated/server') return new Proxy({}, { get: () => value => value });
+      if (id === './_generated/api') return { internal: refs };
+      if (id === './auth') return { auth: { addHttpRoutes() {} } };
+      if (id === './authz') return { requireAuthenticated() {} };
+      if (id === 'convex/server') return { httpRouter: () => ({ route: r => routes.push(r) }) };
+      if (id.startsWith('./')) return load(id.slice(2));
+      return require(id);
+    };
+    new Function('require', 'exports', 'crypto', compiled)(localRequire, result, webcrypto);
+    return result;
+  }
+  const db = {
+    query(table) {
+      let candidates = table === 'units' ? units : table === 'specs'
+        ? [{ slug: 'demo', yaml: 'pipeline:\n  main:\n    nodes: []\n' }] : rows;
+      return {
+        withIndex(index, build) {
+          const schema = fs.readFileSync(path.join(__dirname, '../convex/schema.ts'), 'utf8');
+          assert.ok(schema.includes(`.index("${index}"`), `Missing index: ${index}`);
+          const range = { eq(field, value) {
+            candidates = candidates.filter(row => row[field] === value);
+            return range;
+          } };
+          build(range);
+          return this;
+        },
+        order() { return this; },
+        async take(n) { return candidates.slice(0, n).map(row => ({ ...row })); },
+        async first() { return candidates[0] ?? null; },
+      };
+    },
+    async insert(table, value) {
+      assert.equal(table, 'requests');
+      const id = `request-${rows.length}`;
+      rows.push({ _id: id, ...value });
+      return id;
+    },
+    async patch(id, patch) {
+      const row = [...rows, ...units].find(row => row._id === id);
+      assert.ok(row);
+      Object.assign(row, patch);
+    },
+  };
+  const ctx = {
+    db,
+    async runQuery(ref, args) {
+      if (ref === 'unitTokens.getByHash') return { _id: 'token', lastUsedAt: Date.now() };
+      const [module, name] = ref.split('.');
+      return load(module)[name].handler(ctx, args);
+    },
+    async runMutation(ref, args) {
+      const [module, name] = ref.split('.');
+      return load(module)[name].handler(ctx, args);
+    },
+  };
+  load('http');
+  async function http(method, url, body, authenticated = true) {
+    const route = routes.find(r => r.path === new URL(url, 'http://localhost').pathname && r.method === method);
+    assert.ok(route, `${method} ${url}`);
+    return route.handler(ctx, new Request(new URL(url, 'http://localhost'), {
+      method, headers: { ...(authenticated ? { Authorization: 'Bearer test-token' } : {}),
+        'Content-Type': 'application/json' },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    }));
+  }
+  return { rows, units, http };
+}
+
+test('creation only inserts a waiting request and validates input/authentication', async () => {
+  const { rows, units, http } = setup();
+  const body = { specSlug: 'demo', pipelineName: 'main', payload: { prompt: 'Hello' } };
+  assert.equal((await http('POST', '/api/requests/create', body, false)).status, 401);
+  assert.equal((await http('POST', '/api/requests/create', { ...body, pipelineName: 'missing' })).status, 400);
+  const { payload, ...missingPayload } = body;
+  assert.equal((await http('POST', '/api/requests/create', missingPayload)).status, 400);
+  assert.equal(rows.length, 0);
+  const response = await http('POST', '/api/requests/create', body);
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), { requestId: 'request-0' });
+  assert.deepEqual(rows, [{ _id: 'request-0', ...body, status: 'waiting' }]);
+  assert.equal(units[0].lastSeen, 1);
+});
+
+test('inspection and claim apply all eight filter combinations before limiting', async () => {
+  for (let mask = 0; mask < 8; mask++) {
+    const { rows, units, http } = setup();
+    for (let n = 0; n < 8; n++) rows.push({
+      _id: `request-${n}`, specSlug: 'demo', payload: n,
+      pipelineName: n & 1 ? 'main' : 'other',
+      status: n & 2 ? 'custom-state' : 'waiting',
+      ...(n & 4 ? { unitId: 'previous' } : {}),
+    });
+    rows.unshift({ ...rows[7], _id: 'different-spec', specSlug: 'other' });
+    const filters = {
+      ...(mask & 1 ? { by_pipeline: 'main' } : {}),
+      ...(mask & 2 ? { by_status: 'custom-state' } : {}),
+      ...(mask & 4 ? { by_unit_id: 'previous' } : {}),
+    };
+    const expected = rows.filter(r => r.specSlug === 'demo'
+      && (!(mask & 1) || r.pipelineName === 'main')
+      && (!(mask & 2) || r.status === 'custom-state')
+      && (!(mask & 4) || r.unitId === 'previous')).slice(0, 2);
+    const before = JSON.stringify(rows);
+    const query = new URLSearchParams({ specSlug: 'demo', maxCount: '2', ...filters });
+    const viewed = await http('GET', `/api/requests?${query}`);
+    assert.equal(viewed.status, 200);
+    assert.deepEqual((await viewed.json()).map(r => r.requestId), expected.map(r => r._id));
+    assert.equal(JSON.stringify(rows), before);
+    assert.equal(units[0].lastSeen, 1);
+    const claimed = await http('POST', '/api/requests/claim', {
+      specSlug: 'demo', unitId: 'receiver', maxCount: 2, ...filters,
+    });
+    assert.equal(claimed.status, 200);
+    assert.deepEqual((await claimed.json()).map(r => r.requestId), expected.map(r => r._id));
+    for (const row of expected) {
+      assert.equal(row.status, 'possessed');
+      assert.equal(row.unitId, 'receiver');
+      assert.equal(typeof row.claimedAt, 'number');
+    }
+  }
+});
+
+test('GET and claim reject invalid filters and limits and return empty matches', async () => {
+  const { http } = setup();
+  for (const query of ['specSlug=demo&maxCount=0', 'specSlug=demo&maxCount=1.5',
+    'specSlug=demo&maxCount=', 'specSlug=demo&by_pipeline=',
+    'specSlug=demo&by_status=a&by_status=b', 'maxCount=1']) {
+    assert.equal((await http('GET', `/api/requests?${query}`)).status, 400);
+  }
+  assert.equal((await http('GET', '/api/requests?specSlug=demo', undefined, false)).status, 401);
+  assert.deepEqual(await (await http('GET', '/api/requests?specSlug=demo')).json(), []);
+  for (const extra of [{ by_status: 7 }, { by_unit_id: null }, { maxCount: 101 }]) {
+    assert.equal((await http('POST', '/api/requests/claim', {
+      specSlug: 'demo', unitId: 'receiver', ...extra,
+    })).status, 400);
+  }
+  assert.equal((await http('POST', '/api/requests/claim', {
+    specSlug: 'demo', unitId: 'unregistered',
+  })).status, 400);
+  for (const route of ['/api/requests', '/api/requests/create']) {
+    assert.equal((await http('OPTIONS', route, undefined, false)).status, 204);
+  }
+});

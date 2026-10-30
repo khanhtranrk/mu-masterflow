@@ -50,7 +50,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 3. **A request belongs to one spec and one pipeline.** Store each request as a separate `requests` document with `specSlug`, `pipelineName`, `payload`, execution `status`, optional `unitId`, and per-node `nodeStates`.
 4. **A pipeline is a DAG.** `depends_on` determines edges. Do not flatten pipeline execution into a single ordered step list. Unknown YAML fields and node configuration must survive UI edits.
 5. **Node states are runtime data, not the spec graph.** `nodeStates` is keyed by node name and may contain `status`, `device`, `artifacts`, and `logs`; the UI overlays those states on the YAML pipeline graph.
-6. **Claiming must stay atomic.** `units.claim` selects requests through `by_spec_slug_and_status` and changes `waiting` to `possessed` in the same Convex mutation.
+6. **Claiming must stay atomic.** `units.claim` selects requests through an index matching the supplied filters and changes matching records to `possessed` in the same Convex mutation.
 7. **Unit authorization uses unit tokens.** Worker HTTP hooks validate the bearer token against the token hash in `unitTokens`. The desktop manages token metadata through public Convex queries/mutations; token plaintext is generated in the browser and shown only once.
 8. **Archiving a spec retains its dependent requests.** `specs.remove` sets `deletedAt`; the UI confirms before archiving.
 9. **Use Convex indexes.** Do not scan whole tables with `.collect()` or filter database queries in memory. Add/adjust indexes when adding lookup paths.
@@ -60,7 +60,8 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 
 - Request statuses: `waiting`, `possessed`, `processing`, `process_failed`, `artifact_available`, `retrieve_artifact_failed`, `succeeded`.
 - Node-state statuses: `queue`, `running`, `failed`, `succeeded`.
-- Request creation accepts `specSlug`, `pipelineName`, and `payload`.
+- Request creation accepts `specSlug`, `pipelineName`, and `payload`. Workers can create waiting requests through `POST /api/requests/create` without claiming or executing them.
+- `GET /api/requests` inspects requests without modifying them. This endpoint and `POST /api/requests/claim` require `specSlug`, accept `maxCount` (default 1, range 1–100), and combine optional `by_pipeline`, `by_status`, and `by_unit_id` filters with AND. Omitted filters impose no restriction, including status; claim can therefore claim requests in any state. `by_status` accepts any non-empty string. Claim sets matches to `possessed` and assigns the receiving `unitId`.
 - Worker reports use `POST /api/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.
 - Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
 - The desktop stores Convex profile names, URLs, remembered account email addresses, and the dark appearance preference in the Tauri app config directory. Profiles include separate client/API and HTTP site URLs; signing out does not remove a profile. The app does not store a Convex admin key or account passwords.

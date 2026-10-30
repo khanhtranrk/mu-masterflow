@@ -61,6 +61,12 @@ export default defineSchema({
     claimedAt: v.optional(v.number()),
   }).index("by_spec_slug", ["specSlug"])
   .index("by_spec_slug_and_status", ["specSlug", "status"])
+  .index("by_spec_pipeline", ["specSlug", "pipelineName"])
+  .index("by_spec_unit", ["specSlug", "unitId"])
+  .index("by_spec_status_pipeline", ["specSlug", "status", "pipelineName"])
+  .index("by_spec_status_unit", ["specSlug", "status", "unitId"])
+  .index("by_spec_pipeline_unit", ["specSlug", "pipelineName", "unitId"])
+  .index("by_spec_status_pipeline_unit", ["specSlug", "status", "pipelineName", "unitId"])
   .index("by_status", ["status"]),
 
   units: defineTable({
