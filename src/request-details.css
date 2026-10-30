@@ -13,3 +13,87 @@
 .request-unit-devices { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .request-unit-devices span { padding: 4px 6px; border-radius: 5px; background: var(--soft); color: var(--muted); font-size: 8px; }
 .dark .request-artifact,.dark .request-node-logs { background: #1d1e21; }
+
+/* Requests prioritize execution; configuration stays in the secondary tab. */
+.request-hub .request-workspace { grid-template-columns: minmax(230px, 290px) minmax(0, 1fr); }
+.request-hub .request-detail { padding: 20px; }
+.request-hub .request-detail-title h3 { font-size: 20px; overflow-wrap: anywhere; }
+.request-hub .request-execution-view .graph-viewport { min-height: 390px; max-height: 58vh; }
+.execution-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.execution-toolbar>div { display: grid; gap: 5px; min-width: 0; }
+.execution-toolbar b { font-size: 13px; overflow-wrap: anywhere; }
+.execution-toolbar small { color: var(--muted); font-size: 11px; }
+.execution-toolbar button[aria-pressed=true] { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.execution-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 11px; line-height: 1.6; }
+.execution-summary span { color: var(--muted); overflow-wrap: anywhere; }
+.execution-progress { display: block; width: 100%; height: 6px; margin: 9px 0 18px; accent-color: var(--accent); border: 0; border-radius: 9px; overflow: hidden; background: var(--soft); }
+.execution-progress::-webkit-progress-bar { background: var(--soft); }
+.execution-progress::-webkit-progress-value { background: var(--accent); transition: width .3s; }
+.request-hub .request-node-heading>b { font-size: 13px; overflow-wrap: anywhere; }
+.request-hub .request-node-empty,.request-hub .request-node-device { font-size: 11px; line-height: 1.6; }
+.request-hub .request-node-logs { font-size: 11px; line-height: 1.8; }
+.request-hub .request-node-section>b { font-size: 11px; }
+@media (max-width: 1000px) { .request-hub .request-workspace { grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); } .execution-toolbar { align-items: flex-start; flex-wrap: wrap; } }
+@media (max-width: 750px) { .request-hub .request-workspace { grid-template-columns: 1fr; } .request-hub .request-detail { padding: 14px; } }
+.request-hub .request-row .request-stage { display: block; flex-basis: 100%; color: var(--muted); font-size: 10px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+
+/* Runtime status colors are shared by badges and request list markers. */
+.desktop-shell .status-tag.waiting,.desktop-shell .status-tag.queue { background: #fff4dc; color: #825b10; }
+.desktop-shell .status-tag.possessed { background: #e8f2ff; color: #285eaa; }
+.desktop-shell .status-tag.processing,.desktop-shell .status-tag.running { background: #eeeaff; color: #6650b8; }
+.desktop-shell .status-tag.artifact_available { background: #def5f3; color: #176c68; }
+.desktop-shell .status-tag.succeeded,.desktop-shell .status-tag.success { background: #e3f4e8; color: #287246; }
+.desktop-shell .status-tag.process_failed,.desktop-shell .status-tag.retrieve_artifact_failed,.desktop-shell .status-tag.failed { background: #ffebe9; color: #ad3833; }
+.desktop-shell.dark .status-tag.waiting,.desktop-shell.dark .status-tag.queue { background: #40341d; color: #f0c36b; }
+.desktop-shell.dark .status-tag.possessed { background: #22344c; color: #99c2ff; }
+.desktop-shell.dark .status-tag.processing,.desktop-shell.dark .status-tag.running { background: #352d50; color: #c5b5ff; }
+.desktop-shell.dark .status-tag.artifact_available { background: #1d3c3b; color: #7dd7cd; }
+.desktop-shell.dark .status-tag.succeeded,.desktop-shell.dark .status-tag.success { background: #243e2d; color: #8bdaa5; }
+.desktop-shell.dark .status-tag.process_failed,.desktop-shell.dark .status-tag.retrieve_artifact_failed,.desktop-shell.dark .status-tag.failed { background: #492b2c; color: #ffa59e; }
+.request-hub .request-row { --request-state-color: var(--quiet); border-left: 4px solid var(--request-state-color); }
+.request-hub .request-row[data-status=waiting] { --request-state-color: #c59635; }
+.request-hub .request-row[data-status=possessed] { --request-state-color: #6094db; }
+.request-hub .request-row[data-status=processing] { --request-state-color: #9580e6; }
+.request-hub .request-row[data-status=artifact_available] { --request-state-color: #36a69a; }
+.request-hub .request-row[data-status=succeeded] { --request-state-color: #51a36e; }
+.request-hub .request-row[data-status=process_failed],.request-hub .request-row[data-status=retrieve_artifact_failed] { --request-state-color: #df7067; }
+.request-hub .request-row.selected { border-left-color: var(--request-state-color); }
+.request-hub .status-tag { font-weight: 600; }
+.request-hub .request-detail-title>.status-tag { font-size: 11px; padding: 6px 10px; }
+
+.request-monitor-list { display: grid; gap: 14px; }
+.request-monitor-item { --request-state-color: var(--quiet); min-width: 0; border: 1px solid var(--line); border-left: 4px solid var(--request-state-color); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.request-monitor-item[data-status=waiting] { --request-state-color: #c59635; }
+.request-monitor-item[data-status=possessed] { --request-state-color: #6094db; }
+.request-monitor-item[data-status=processing] { --request-state-color: #9580e6; }
+.request-monitor-item[data-status=artifact_available] { --request-state-color: #36a69a; }
+.request-monitor-item[data-status=succeeded] { --request-state-color: #51a36e; }
+.request-monitor-item[data-status=process_failed],.request-monitor-item[data-status=retrieve_artifact_failed] { --request-state-color: #df7067; }
+.request-monitor-header { display: flex; align-items: center; gap: 12px; padding-right: 14px; }
+.request-expand-button { display: flex; align-items: center; gap: 20px; flex: 1; min-width: 0; padding: 20px 16px; border: 0; background: transparent; color: var(--text); text-align: left; }
+.request-expand-button:hover { background: var(--soft); }
+.request-expand-chevron { width: 14px; flex: none; color: var(--muted); font-size: 20px; }
+.request-monitor-title { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.request-monitor-title>b { font-size: 14px; overflow-wrap: anywhere; }
+.request-monitor-title>small { font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.request-monitor-progress { display: grid; gap: 6px; width: 210px; min-width: 0; }
+.request-monitor-progress>b { font-size: 11px; font-weight: 550; }
+.request-monitor-progress>small { font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.request-monitor-worker { width: 100px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.request-hub .request-manage-button { flex: none; letter-spacing: 2px; }
+.request-expanded { border-top: 1px solid var(--line); padding: 20px; }
+.request-expanded .request-execution-view { margin-top: 0; }
+.request-accordion .request-execution-view .graph-viewport { min-height: 290px; max-height: 440px; }
+.request-expanded .request-unit-detail { margin-top: 16px; }
+/* A compact disclosure menu keeps actions next to the request row. */
+.request-monitor-item { overflow: visible; }
+.request-actions-dropdown { position: relative; flex: none; }
+.request-actions-dropdown:has(.request-actions-menu) { z-index: 5; }
+.request-actions-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 160px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 8px 28px #0002; display: grid; gap: 2px; }
+.request-actions-menu button { border: 0; border-radius: 5px; padding: 9px 11px; background: transparent; color: var(--text); text-align: left; font-size: 12px; }
+.request-actions-menu button:hover:not(:disabled) { background: var(--soft); }
+.request-actions-menu button:disabled { opacity: .4; cursor: not-allowed; }
+.request-actions-menu .request-delete-action { color: #b94a43; border-top: 1px solid var(--line); border-radius: 0 0 5px 5px; margin-top: 3px; }
+.dark .request-actions-menu .request-delete-action { color: #ffa59e; }
+@media (max-width: 1050px) { .request-monitor-worker { display: none; } .request-monitor-progress { width: 150px; } .request-expand-button { gap: 12px; } }
+@media (max-width: 750px) { .request-expand-button { flex-wrap: wrap; padding: 14px 12px; } .request-monitor-title { flex-basis: calc(100% - 30px); } .request-monitor-progress { width: auto; flex: 1; } .request-expanded { padding: 12px; } }

@@ -25,7 +25,7 @@ Create a token in **Settings → Unit tokens** in the desktop app. After Convex 
 
 The browser generates a random 256-bit token, sends its SHA-256 hash to the backend, and displays the plaintext once. Keep the plaintext in the worker's secret configuration; never put it in source code, logs, or documentation. Authenticated deployment users share token management access.
 
-Every `GET` and `POST` in this reference requires:
+Except for the public `GET /api/health` liveness probe, every `GET` and `POST` in this reference requires:
 
 ```http
 Authorization: Bearer <UNIT_TOKEN>
@@ -46,6 +46,7 @@ Accept: application/json
 
 | Method | Path | Purpose | Successful response |
 | --- | --- | --- | --- |
+| `GET` | `/api/health` | Public server liveness check; no token or database access | `200`, JSON `{ "ok": true }` |
 | `POST` | `/api/units/heartbeat` | Register or update a unit | `200`, JSON `{ "ok": true }` |
 | `POST` | `/api/requests/claim` | Claim matching requests | `200`, JSON array |
 | `GET` | `/api/specs/{specSlug}` | Retrieve the original YAML | `200`, YAML |
@@ -715,3 +716,16 @@ stop the loop. `--batch-size` defaults to 1, maximum 100. Repeat `--by-pipeline`
 and `--by-status` for OR filters. Mu defaults to `byStatus: ["waiting"]` even
 though the raw HTTP API has no default status filter. `--unit-id` defaults to
 hostname; `--unit-type` defaults to unknown. Claim is not automatically retried.
+
+
+## Health check
+
+`GET /api/health` requires no authentication and returns HTTP 200 with
+`{"ok":true}` and `Cache-Control: no-store`. It checks HTTP server liveness,
+without querying the database. OPTIONS is supported for browser clients.
+
+```sh
+curl --fail http://127.0.0.1:3211/api/health
+```
+
+Requests can be deleted from the request details with confirmation. Deletion sets optional `requests.deletedAt` (Unix milliseconds) and preserves the record. It leaves the existing `status` unchanged; `deleted` is not a request status. Visibility and claim eligibility depend on `deletedAt`, independently of execution status. Deleted requests are excluded through indexes before list/inspection/claim limits and cannot be edited. Deletion is idempotent and does not cancel an already running worker; its reports remain accepted without clearing `deletedAt`.

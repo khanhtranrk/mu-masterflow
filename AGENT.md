@@ -52,7 +52,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 5. **Node states are runtime data, not the spec graph.** `nodeStates` is keyed by node name and may contain `status`, `device`, `artifacts`, and `logs`; the UI overlays those states on the YAML pipeline graph.
 6. **Claiming must stay atomic.** `units.claim` selects requests through an index matching the supplied filters and changes matching records to `possessed` in the same Convex mutation.
 7. **Unit authorization uses unit tokens.** Worker HTTP hooks validate the bearer token against the token hash in `unitTokens`. The desktop manages token metadata through public Convex queries/mutations; token plaintext is generated in the browser and shown only once.
-8. **Archiving a spec retains its dependent requests.** `specs.remove` sets `deletedAt`; the UI confirms before archiving.
+8. **Archiving a spec retains its dependent requests.** `specs.remove` sets `deletedAt`; the UI confirms before archiving. Request deletion uses `requests.remove` to set `deletedAt` without changing `status` (`deleted` is not a status). Exclude deleted requests from lists, inspection, and claims through indexes before limiting results; retain in-flight worker reports. See [architecture](docs/architecture.md#requests).
 9. **Use Convex indexes.** Do not scan whole tables with `.collect()` or filter database queries in memory. Add/adjust indexes when adding lookup paths.
 10. **Avoid hard-coded assumptions about pipeline names or workload types.** Specs can define arbitrary pipelines and workloads.
 
@@ -60,6 +60,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 
 - Request statuses: `waiting`, `possessed`, `processing`, `process_failed`, `artifact_available`, `retrieve_artifact_failed`, `succeeded`.
 - Node-state statuses: `queue`, `running`, `failed`, `succeeded`.
+- Request editing in the desktop uses `requests.editPayload`: waiting-only, expected-payload conflict detection, saved-schema type validation, and payload-only patching. Completed/claimed requests can be duplicated into a new waiting request. See [request editing](docs/spec-yaml.md#creating-and-editing-requests).
 - Request creation accepts `specSlug`, `pipelineName`, and `payload`. Workers can create waiting requests through `POST /api/requests/create` without claiming or executing them.
 - `GET /api/requests` inspects requests without modifying them. This endpoint and `POST /api/requests/claim` require `specSlug`, accept `maxCount` (default 1, range 1–100), and combine optional `byPipeline`, `byStatus`, and `byUnitId` filters with AND. Claim accepts a string or string array for pipeline/status (OR within each group, at most 100 combinations), merges indexed candidates oldest-first before the global limit, and remains atomic. GET inspection keeps single-string query parameters. Omitted filters impose no restriction, including status; claim can therefore claim requests in any state. `byStatus` accepts any non-empty string. Claim sets matches to `possessed` and assigns the receiving `unitId`.
 - Worker reports use `POST /api/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.

@@ -12,9 +12,12 @@ import { SpecSidebar } from "./components/SpecSidebar";
 import { SpecDialogs } from "./components/SpecDialogs";
 import { WorkloadsEditor } from "./components/WorkloadsEditor";
 import { asObject, starterYaml } from "./specUtils";
-import { isMapping, nextName, renameNode, requestPayload, specIssues } from "./specModel";
+import { isMapping, nextName, renameNode, specIssues } from "./specModel";
 import { YamlSection } from "./components/YamlSection";
 import { EntriesEditor } from "./components/EntriesEditor";
+import { RequestEditor, type RequestEditorSession } from "./components/RequestEditor";
+import { requestTitle } from "./requestModel";
+import "./request-editor.css";
 import { sendSystemNotification } from "./systemNotifications";
 import { useAuthActions } from "@convex-dev/auth/react";
 import type { ConvexServerProfile } from "./connectionSettings";
@@ -56,7 +59,7 @@ function App({
   const [activeTab, setActiveTab] = useState<ConfigTab>("pipeline");
   const [yamlDraft, setYamlDraft] = useState("");
   const [selectedWorkload, setSelectedWorkload] = useState("");
-  const [modal, setModal] = useState<"spec" | "request" | null>(null);
+  const [modal, setModal] = useState<"spec" | null>(null);
   const [specUploadName, setSpecUploadName] = useState("");
   const [specNameDraft, setSpecNameDraft] = useState("");
   const [renameTarget, setRenameTarget] = useState<SpecItem | null>(null);
@@ -71,7 +74,7 @@ function App({
   const [hasEdits, setHasEdits] = useState(false);
   const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
   const [editorErrors, setEditorErrors] = useState<Record<string, string>>({});
-  const [creatingRequest, setCreatingRequest] = useState(false);
+  const [requestEditor, setRequestEditor] = useState<RequestEditorSession | null>(null);
   const lastParsed = useRef<Record<string, any>>({});
   const editRevision = useRef(0);
   const seenNotificationIds = useRef<Set<string> | null>(null);
@@ -86,12 +89,13 @@ function App({
   })) as SpecItem[];
   const activeSpec = specs.find((spec) => spec.slug === activeSpecSlug) ?? specs[0];
   const remoteRequests = useQuery(api.requests.list, activeSpec ? { specSlug: activeSpec.slug } : "skip");
-  const remoteUnits = useQuery(api.units.list, {});
   const createSpec = useMutation(api.specs.create);
   const updateSpec = useMutation(api.specs.update);
   const renameSpec = useMutation(api.specs.rename);
   const removeSpec = useMutation(api.specs.remove);
   const createRequest = useMutation(api.requests.create);
+  const editRequest = useMutation(api.requests.editPayload);
+  const removeRequest = useMutation(api.requests.remove);
   const connection = useConvexConnectionState();
 
   useEffect(() => {
@@ -129,11 +133,10 @@ function App({
   const requests: RequestItem[] = (remoteRequests ?? []).map((request) => {
     const id = `REQ-${String(request._id).slice(-4).toUpperCase()}`;
     const payload = request.payload;
-    const payloadObject = asObject(payload);
     return {
       id,
       convexId: request._id,
-      title: typeof payloadObject.title === "string" ? payloadObject.title : id,
+      title: requestTitle(payload, id),
       pipelineName: request.pipelineName,
       status: ({
         waitting: "waiting",
@@ -170,12 +173,14 @@ function App({
   const workloadNames = Object.keys(workloadMap);
   const currentWorkloadName = workloadNames.includes(selectedWorkload) ? selectedWorkload : workloadNames[0] ?? "";
   const workloadConfig = asObject(workloadMap[currentWorkloadName]);
-  const pipelineRequests = requests.filter((request) => (request.pipelineName ?? pipelineNames[0]) === currentPipelineName);
-  const activeRequest = requests.find((request) => request.convexId === selectedRequest);
   const savedDocument = useMemo(() => {
     try { return asObject(parse(activeSpec?.yaml ?? "{}")); } catch { return {}; }
   }, [activeSpec?.yaml]);
-  const savedRequestPipeline = activeRequest ? asObject(asObject(savedDocument.pipeline)[activeRequest.pipelineName]) : {};
+  const savedPipelines = asObject(savedDocument.pipeline);
+  const savedPipelineNames = Object.keys(savedPipelines).filter(name => isMapping(savedPipelines[name]));
+  const requestPipelineName = savedPipelineNames.includes(activePipeline) ? activePipeline : savedPipelineNames[0] ?? "";
+  const visibleRequests = requests.filter(request => request.pipelineName === requestPipelineName);
+  const savedRequestPipeline = asObject(savedPipelines[requestPipelineName]);
   const activeRequestPipelineNodes: PipelineNode[] = Array.isArray(savedRequestPipeline.nodes)
     ? savedRequestPipeline.nodes.filter((node: unknown): node is PipelineNode => isMapping(node) && typeof node.name === "string") : [];
   const dirty = hasEdits;
@@ -205,6 +210,7 @@ function App({
     setActivePipeline("");
     setSelectedWorkload("");
     setSelectedRequest(null);
+    setRequestEditor(null);
     setSelectedNodeName("");
     setError("");
     setHasEdits(false);
@@ -456,22 +462,41 @@ function App({
     setModal("spec");
   }
 
-  async function addRequest(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!activeSpec || !currentPipelineName) return;
-    const data = new FormData(event.currentTarget);
-    try {
-      if (dirty || editorBlocked) throw new Error("Save a valid spec before creating requests.");
-      const payload = requestPayload(asObject(pipelineConfig.params), data);
-      setCreatingRequest(true);
-      await createRequest({ specSlug: activeSpec.slug, pipelineName: currentPipelineName, payload });
-      setModal(null);
-      notice("Request added");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create request");
-    } finally {
-      setCreatingRequest(false);
+  async function saveRequest(pipelineName: string, payload: Record<string, unknown>) {
+    if (!activeSpec || !requestEditor) throw new Error("Select a spec and try again.");
+    let id: string;
+    if (requestEditor.mode === "edit") {
+      id = await editRequest({ id: requestEditor.requestId as never, payload, expectedPayload: requestEditor.initialPayload });
+    } else {
+      id = await createRequest({ specSlug: activeSpec.slug, pipelineName, payload });
     }
+    setRequestEditor(null);
+    setActivePipeline(pipelineName);
+    setActiveTab("requests");
+    setSelectedRequest(id);
+    notice(requestEditor.mode === "edit" ? "Request updated" : "Request added to waiting queue");
+  }
+
+  function openEditRequest(request: RequestItem) {
+    if (request.status !== "waiting") { setError("Only waiting requests can be edited. Duplicate this request for a new run."); return; }
+    setRequestEditor({ mode: "edit", pipelineName: request.pipelineName, requestId: request.convexId, initialPayload: request.payload });
+  }
+
+  async function deleteRequest(request: RequestItem) {
+    if (!window.confirm(`Delete “${request.title}”? It will be hidden and cannot be claimed again. This does not stop a worker already running it.`)) return;
+    try {
+      await removeRequest({ id: request.convexId as never });
+      setSelectedRequest(current => current === request.convexId ? null : current);
+      setRequestEditor(current => current?.requestId === request.convexId ? null : current);
+      notice("Request deleted");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not delete request.");
+    }
+  }
+
+  function duplicateRequest(request: RequestItem) {
+    if (!savedPipelineNames.includes(request.pipelineName)) { setError("This pipeline no longer exists in the saved spec."); return; }
+    setRequestEditor({ mode: "create", pipelineName: request.pipelineName, initialPayload: request.payload, duplicate: true });
   }
 
   function openSpec(spec: SpecItem) {
@@ -544,9 +569,9 @@ function App({
   }
 
   function openRequestModal() {
-    if (dirty || editorBlocked) { setError("Save a valid spec before creating requests."); return; }
+    if (!requestPipelineName) { setError("Save a pipeline in this spec before creating requests."); return; }
     setError("");
-    setModal("request");
+    setRequestEditor({ mode: "create", pipelineName: requestPipelineName, initialPayload: {} });
   }
 
   async function signOutAccount() {
@@ -603,7 +628,7 @@ function App({
               dirty={dirty}
               saving={saving}
               error={editorBlocked ? draftError || issues[0] : ""}
-              hasPipeline={Boolean(currentPipelineName) && !dirty && !editorBlocked}
+              hasPipeline={Boolean(requestPipelineName)}
               onSave={() => void saveSpec()}
               onNewRequest={openRequestModal}
             />
@@ -675,17 +700,17 @@ function App({
               )}
               {activeTab === "requests" && (
                 <RequestsView
-                  pipelineNames={pipelineNames}
-                  currentPipelineName={currentPipelineName}
-                  canCreateRequest={!dirty && !editorBlocked}
-                  requests={pipelineRequests}
-                  units={remoteUnits ?? []}
-                  activeRequest={activeRequest}
-                  activeRequestPipelineNodes={activeRequestPipelineNodes}
+                  pipelineNames={savedPipelineNames}
+                  currentPipelineName={requestPipelineName}
+                  canCreateRequest={Boolean(requestPipelineName)}
+                  requests={visibleRequests}
+                  pipelineNodes={activeRequestPipelineNodes}
                   selectedRequest={selectedRequest}
                   onSelectPipeline={setActivePipeline}
-                  onSelectRequest={(id) => setSelectedRequest(selectedRequest === id ? null : id)}
                   onNewRequest={openRequestModal}
+                  onEditRequest={openEditRequest}
+                  onDuplicateRequest={duplicateRequest}
+                  onDeleteRequest={deleteRequest}
                 />
               )}
             </div>
@@ -701,6 +726,7 @@ function App({
           </div>
         )}
       </main>
+      {requestEditor && <RequestEditor key={`${activeSpec?._id}:${requestEditor.mode}:${requestEditor.requestId ?? requestEditor.pipelineName}:${requestEditor.duplicate ?? false}`} session={requestEditor} pipelines={savedPipelines} specName={activeSpec?.name ?? ""} hasUnsavedSpec={dirty} onClose={() => setRequestEditor(null)} onSave={saveRequest} />}
       <SpecDialogs
         modal={modal}
         renameOpen={renameOpen}
@@ -708,15 +734,11 @@ function App({
         specNameDraft={specNameDraft}
         specUploadName={specUploadName}
         renameDraft={renameDraft}
-        currentPipelineName={currentPipelineName}
-        pipelineParams={pipelineConfig.params}
         creatingSpec={creatingSpec}
-        creatingRequest={creatingRequest}
         onCloseModal={() => setModal(null)}
         onCloseRename={() => setRenameOpen(false)}
         onSubmitCreate={addSpec}
         onSubmitRename={submitRename}
-        onSubmitRequest={addRequest}
         onSpecNameChange={setSpecNameDraft}
         onSpecFileChange={(event) => {
           const file = event.target.files?.[0];

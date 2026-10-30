@@ -9,6 +9,7 @@ const { webcrypto } = require('node:crypto');
 function setup() {
   const rows = [];
   const units = [{ _id: 'unit-record', unitId: 'receiver', lastSeen: 1 }];
+  const specs = [{ slug: 'demo', yaml: 'pipeline:\n  main:\n    nodes: []\n' }];
   const routes = [];
   const cache = new Map();
   const refs = new Proxy({}, { get: (_, module) => new Proxy({}, {
@@ -35,9 +36,10 @@ function setup() {
     return result;
   }
   const db = {
+    async get(id) { return rows.find(row => row._id === id) ?? null; },
     query(table) {
       let candidates = table === 'units' ? units : table === 'specs'
-        ? [{ slug: 'demo', yaml: 'pipeline:\n  main:\n    nodes: []\n' }] : rows;
+        ? specs : rows;
       return {
         withIndex(index, build) {
           const schema = fs.readFileSync(path.join(__dirname, '../convex/schema.ts'), 'utf8');
@@ -88,7 +90,7 @@ function setup() {
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }));
   }
-  return { rows, units, http };
+  return { rows, units, specs, http, remove: args => load("requests").remove.handler(ctx, args), list: args => load("requests").list.handler(ctx, args), edit: args => load("requests").editPayload.handler(ctx, args) };
 }
 
 test('creation only inserts a waiting request and validates input/authentication', async () => {
@@ -192,4 +194,47 @@ test('array claim filters merge oldest candidates with one global limit', async 
     unitId: 'receiver', specSlug: 'demo', byPipeline: ['a', 'b'], byStatus: ['never'],
   });
   assert.deepEqual(await empty.json(), []);
+});
+
+
+test('request editor updates waiting payload atomically and rejects stale, claimed or invalid input', async () => {
+  const { rows, specs, edit } = setup();
+  specs[0].yaml = 'pipeline:\n  main:\n    params:\n      name: {type: string}\n      width: {type: number, default: 1280}\n    nodes: []\n';
+  const original = {name: 'Original', width: 1280};
+  rows.push({_id: 'editable', specSlug: 'demo', pipelineName: 'main', payload: original, status: 'waiting', nodeStates: {one: {status: 'queue'}}});
+  await assert.rejects(edit({id: 'editable', payload: {name: 'bad', width: '1024'}, expectedPayload: original}), /finite number/);
+  await assert.rejects(edit({id: 'editable', payload: {}, expectedPayload: original}), /required/);
+  await assert.rejects(edit({id: 'editable', payload: {name: 'bad', extra: true}, expectedPayload: original}), /not declared/);
+  await assert.rejects(edit({id: 'editable', payload: {name: 'new'}, expectedPayload: {name: 'stale'}}), /changed elsewhere/);
+  assert.equal(await edit({id: 'editable', payload: {name: 'Updated'}, expectedPayload: {width: 1280, name: 'Original'}}), 'editable');
+  assert.deepEqual(rows[0].payload, {name: 'Updated'});
+  assert.equal(rows[0].status, 'waiting');
+  assert.deepEqual(rows[0].nodeStates, {one: {status: 'queue'}});
+  rows[0].status = 'possessed';
+  await assert.rejects(edit({id: 'editable', payload: {name: 'Too late'}, expectedPayload: {name: 'Updated'}}), /left the waiting queue/);
+  assert.deepEqual(rows[0].payload, {name: 'Updated'});
+});
+
+
+test('soft deletion preserves data and excludes deleted requests before selection limits', async () => {
+  const { rows, http, remove, list, edit } = setup();
+  rows.push(
+    { _id: 'deleted', _creationTime: 1, specSlug: 'demo', pipelineName: 'main', status: 'waiting', payload: { prompt: 'keep' } },
+    { _id: 'active', _creationTime: 2, specSlug: 'demo', pipelineName: 'main', status: 'waiting', payload: {} },
+  );
+  await remove({ id: 'deleted' });
+  const deletedAt = rows[0].deletedAt;
+  assert.equal(typeof deletedAt, 'number');
+  await remove({ id: 'deleted' });
+  assert.equal(rows[0].deletedAt, deletedAt);
+  assert.deepEqual(rows[0].payload, { prompt: 'keep' });
+  assert.deepEqual((await list({ specSlug: 'demo' })).map(row => row._id), ['active']);
+  await assert.rejects(edit({ id: 'deleted', payload: {}, expectedPayload: { prompt: 'keep' } }), /not found/);
+  const inspected = await http('GET', '/api/requests?specSlug=demo&maxCount=1');
+  assert.equal(inspected.status, 200);
+  assert.ok(!JSON.stringify(await inspected.json()).includes('deleted'));
+  const claimed = await http('POST', '/api/requests/claim', { specSlug: 'demo', unitId: 'receiver', maxCount: 1, byStatus: 'waiting' });
+  assert.equal(claimed.status, 200);
+  assert.equal(rows[0].status, 'waiting');
+  assert.equal(rows[1].status, 'possessed');
 });

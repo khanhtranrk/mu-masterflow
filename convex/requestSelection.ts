@@ -31,41 +31,41 @@ async function selectOne(ctx: Pick<QueryCtx, "db">, args: Omit<Selection, "byPip
   }
   if (byStatus !== undefined && byPipeline !== undefined && byUnitId !== undefined) {
     return ctx.db.query("requests")
-      .withIndex("by_spec_status_pipeline_unit", q => q.eq("specSlug", specSlug).eq("status", byStatus).eq("pipelineName", byPipeline).eq("unitId", byUnitId))
+      .withIndex("by_spec_status_pipeline_unit", q => q.eq("specSlug", specSlug).eq("status", byStatus).eq("pipelineName", byPipeline).eq("unitId", byUnitId).eq("deletedAt", undefined))
       .order("asc").take(maxCount);
   }
   if (byStatus !== undefined && byPipeline !== undefined) {
     return ctx.db.query("requests")
-      .withIndex("by_spec_status_pipeline", q => q.eq("specSlug", specSlug).eq("status", byStatus).eq("pipelineName", byPipeline))
+      .withIndex("by_spec_status_pipeline", q => q.eq("specSlug", specSlug).eq("status", byStatus).eq("pipelineName", byPipeline).eq("deletedAt", undefined))
       .order("asc").take(maxCount);
   }
   if (byStatus !== undefined && byUnitId !== undefined) {
     return ctx.db.query("requests")
-      .withIndex("by_spec_status_unit", q => q.eq("specSlug", specSlug).eq("status", byStatus).eq("unitId", byUnitId))
+      .withIndex("by_spec_status_unit", q => q.eq("specSlug", specSlug).eq("status", byStatus).eq("unitId", byUnitId).eq("deletedAt", undefined))
       .order("asc").take(maxCount);
   }
   if (byPipeline !== undefined && byUnitId !== undefined) {
     return ctx.db.query("requests")
-      .withIndex("by_spec_pipeline_unit", q => q.eq("specSlug", specSlug).eq("pipelineName", byPipeline).eq("unitId", byUnitId))
+      .withIndex("by_spec_pipeline_unit", q => q.eq("specSlug", specSlug).eq("pipelineName", byPipeline).eq("unitId", byUnitId).eq("deletedAt", undefined))
       .order("asc").take(maxCount);
   }
   if (byStatus !== undefined) {
     return ctx.db.query("requests")
-      .withIndex("by_spec_slug_and_status", q => q.eq("specSlug", specSlug).eq("status", byStatus))
+      .withIndex("by_spec_slug_and_status", q => q.eq("specSlug", specSlug).eq("status", byStatus).eq("deletedAt", undefined))
       .order("asc").take(maxCount);
   }
   if (byPipeline !== undefined) {
     return ctx.db.query("requests")
-      .withIndex("by_spec_pipeline", q => q.eq("specSlug", specSlug).eq("pipelineName", byPipeline))
+      .withIndex("by_spec_pipeline", q => q.eq("specSlug", specSlug).eq("pipelineName", byPipeline).eq("deletedAt", undefined))
       .order("asc").take(maxCount);
   }
   if (byUnitId !== undefined) {
     return ctx.db.query("requests")
-      .withIndex("by_spec_unit", q => q.eq("specSlug", specSlug).eq("unitId", byUnitId))
+      .withIndex("by_spec_unit", q => q.eq("specSlug", specSlug).eq("unitId", byUnitId).eq("deletedAt", undefined))
       .order("asc").take(maxCount);
   }
   return ctx.db.query("requests")
-    .withIndex("by_spec_slug", q => q.eq("specSlug", specSlug))
+    .withIndex("by_spec_slug", q => q.eq("specSlug", specSlug).eq("deletedAt", undefined))
     .order("asc").take(maxCount);
 }
 

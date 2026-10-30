@@ -34,9 +34,9 @@ The YAML string is authoritative. Do not denormalize pipeline params or nodes in
 
 ### `requests`
 
-One document per submitted run/request. Fields are `specSlug`, `pipelineName`, `status`, arbitrary `payload`, optional `nodeStates`, optional `unitId`, and optional `claimedAt`. The UI submits the pipeline parameter values as `payload`; node runtime information is keyed by node name in `nodeStates`.
+One document per submitted run/request. Fields are `specSlug`, `pipelineName`, `status`, arbitrary `payload`, optional `nodeStates`, optional `unitId`, optional `claimedAt`, and optional `deletedAt`. The UI submits the pipeline parameter values as `payload`; node runtime information is keyed by node name in `nodeStates`.
 
-Indexes: `by_spec_slug`, `by_spec_slug_and_status`, and `by_status`. Claim uses `by_spec_slug_and_status` to select waiting requests atomically.
+Request selection uses compound indexes for `specSlug` and each supported combination of status, pipeline, and unit filters, with `deletedAt` as the final indexed field. List, inspection, and atomic claim queries require `deletedAt` to be absent before applying their limits. The standalone `by_status` index is also retained.
 
 ### `units`
 
@@ -108,3 +108,5 @@ Convex Auth requires `JWT_PRIVATE_KEY` and `JWKS` on each deployment. `auth.conf
 ## Runtime node states
 
 Each `requests.nodeStates` entry is keyed by node name and may contain `status`, `device`, `artifacts`, and `logs`. The UI overlays these states on the graph defined in the spec YAML and exposes the selected node's reported details.
+
+Requests can be deleted from the request details with confirmation. Deletion sets optional `requests.deletedAt` (Unix milliseconds) and preserves the record. It leaves the existing `status` unchanged; `deleted` is not a request status. Visibility and claim eligibility depend on `deletedAt`, independently of execution status. Deleted requests are excluded through indexes before list/inspection/claim limits and cannot be edited. Deletion is idempotent and does not cancel an already running worker; its reports remain accepted without clearing `deletedAt`.

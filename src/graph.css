@@ -60,3 +60,15 @@
 .upload-glyph { width: 28px; height: 28px; display: grid; place-items: center; flex: none; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--accent); font-size: 16px; }
 .form-error { border: 1px solid #f0d1ce; border-radius: 6px; padding: 8px 9px; background: #fff4f3; color: #a44743; font-size: 9px; line-height: 1.45; }
 .dark .form-error { border-color: #583936; background: #342321; color: #f1aaa4; }
+
+.graph-node.execution-running .graph-node-index { background: var(--accent); color: var(--panel); animation: execution-pulse 1.8s ease-in-out infinite; }
+.graph-node.execution-failed .graph-node-index { background: #b65550; color: #fff; }
+.graph-node.execution-succeeded .graph-node-index { background: #378459; color: #fff; }
+.graph-edges path.edge-running { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 7 5; animation: execution-flow .8s linear infinite; }
+.graph-edges path.edge-succeeded { stroke: #50966a; stroke-width: 2; }
+.graph-edges path.edge-failed { stroke: #b65550; stroke-width: 2; }
+.graph-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@keyframes execution-flow { to { stroke-dashoffset: -24; } }
+@keyframes execution-pulse { 50% { box-shadow: 0 0 0 5px #8070df25; } }
+@media (prefers-reduced-motion: reduce) { .graph-edges path.edge-running,.graph-node.execution-running .graph-node-index { animation: none; } .execution-progress::-webkit-progress-value { transition: none; } }
+.graph-edges marker path { fill: currentColor; stroke: none; }

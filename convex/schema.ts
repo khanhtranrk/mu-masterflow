@@ -59,14 +59,15 @@ export default defineSchema({
     )),
     unitId: v.optional(v.string()),
     claimedAt: v.optional(v.number()),
-  }).index("by_spec_slug", ["specSlug"])
-  .index("by_spec_slug_and_status", ["specSlug", "status"])
-  .index("by_spec_pipeline", ["specSlug", "pipelineName"])
-  .index("by_spec_unit", ["specSlug", "unitId"])
-  .index("by_spec_status_pipeline", ["specSlug", "status", "pipelineName"])
-  .index("by_spec_status_unit", ["specSlug", "status", "unitId"])
-  .index("by_spec_pipeline_unit", ["specSlug", "pipelineName", "unitId"])
-  .index("by_spec_status_pipeline_unit", ["specSlug", "status", "pipelineName", "unitId"])
+    deletedAt: v.optional(v.number()),
+  }).index("by_spec_slug", ["specSlug", "deletedAt"])
+  .index("by_spec_slug_and_status", ["specSlug", "status", "deletedAt"])
+  .index("by_spec_pipeline", ["specSlug", "pipelineName", "deletedAt"])
+  .index("by_spec_unit", ["specSlug", "unitId", "deletedAt"])
+  .index("by_spec_status_pipeline", ["specSlug", "status", "pipelineName", "deletedAt"])
+  .index("by_spec_status_unit", ["specSlug", "status", "unitId", "deletedAt"])
+  .index("by_spec_pipeline_unit", ["specSlug", "pipelineName", "unitId", "deletedAt"])
+  .index("by_spec_status_pipeline_unit", ["specSlug", "status", "pipelineName", "unitId", "deletedAt"])
   .index("by_status", ["status"]),
 
   units: defineTable({

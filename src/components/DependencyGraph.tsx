@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef } from "react";
 import type { NodeExecutionState, PipelineNode } from "../types";
 import { asObject, layoutGraph, nodeDependencyNames } from "../specUtils";
 
@@ -19,15 +20,25 @@ const nodeLabels: Record<string, string> = {
 };
 
 export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnly = false, interactive = !readOnly }: DependencyGraphProps) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const arrowId = useId();
+  useEffect(() => {
+    if (nodeStates === undefined) return;
+    const element = Array.from(viewport.current?.querySelectorAll<HTMLElement>(".graph-node") ?? []).find(node => node.dataset.node === selected);
+    if (element && viewport.current) {
+      const container = viewport.current;
+      container.scrollTo({ left: Math.max(0, element.offsetLeft - (container.clientWidth - element.offsetWidth) / 2), top: Math.max(0, element.offsetTop - (container.clientHeight - element.offsetHeight) / 2), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    }
+  }, [selected, nodeStates === undefined]);
   const { positions, width, height } = layoutGraph(nodes);
   const validNames = new Set(nodes.map((node) => String(node.name)));
   const runtimeView = nodeStates !== undefined || readOnly;
 
   return (
-    <div className="graph-viewport">
+    <div className="graph-viewport" ref={viewport}>
       <div className="graph-canvas" style={{ width, height }}>
         <svg className="graph-edges" width={width} height={height} aria-hidden="true">
-          <defs><marker id="graph-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker></defs>
+          <defs><marker id={arrowId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker></defs>
           {nodes.flatMap((node) => nodeDependencyNames(node).filter((name) => validNames.has(name)).map((dependency) => {
             const from = positions.get(dependency);
             const to = positions.get(String(node.name));
@@ -37,7 +48,7 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
             const x2 = to.x;
             const y2 = to.y + 42;
             const bend = Math.max(35, (x2 - x1) / 2);
-            return <path key={`${dependency}-${String(node.name)}`} d={`M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`} markerEnd="url(#graph-arrow)" />;
+            return <path key={`${dependency}-${String(node.name)}`} d={`M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`} className={nodeStates ? `edge-${nodeStates[String(node.name)]?.status ?? "pending"}` : undefined} markerEnd={`url(#${arrowId})`} />;
           }))}
         </svg>
         {nodes.map((node, index) => {
@@ -52,6 +63,9 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
           return (
             <div
               key={`${name}-${index}`}
+              data-node={name}
+              aria-label={`${name}${nodeStatus ? `: ${nodeLabels[nodeStatus] ?? nodeStatus}` : ""}`}
+              aria-pressed={interactive ? name === selected : undefined}
               className={`graph-node ${name === selected ? "selected" : ""} ${nodeStatus ? `execution-${nodeStatus}` : ""} ${interactive ? "" : "read-only"}`}
               style={{ left: position.x, top: position.y }}
               onClick={() => interactive && onSelect(name)}
@@ -70,7 +84,7 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
               <span className="graph-node-meta">
                 {runtimeView && execution?.device
                   ? `${execution.device.family ?? "device"} · ${execution.device.index ?? "?"}`
-                  : runtimeView ? "No device reported" : nodeDependencyNames(node).length ? `← ${nodeDependencyNames(node).length} dependencies` : "Independent node"}
+                  : runtimeView ? runLabel : nodeDependencyNames(node).length ? `← ${nodeDependencyNames(node).length} dependencies` : "Independent node"}
               </span>
             </div>
           );

@@ -45,3 +45,5 @@ pipeline preparation, pipeline params/context and node-name dependencies.
 Upload/save diagnostics identify unsupported legacy fields. New request forms
 preserve number types and omit defaults unless overridden. See
 [editor behavior](docs/spec-yaml.md#current-editor-behavior).
+
+Requests can be deleted from the request details with confirmation. Deletion sets optional `requests.deletedAt` (Unix milliseconds) and preserves the record. It leaves the existing `status` unchanged; `deleted` is not a request status. Visibility and claim eligibility depend on `deletedAt`, independently of execution status. Deleted requests are excluded through indexes before list/inspection/claim limits and cannot be edited. Deletion is idempotent and does not cancel an already running worker; its reports remain accepted without clearing `deletedAt`.

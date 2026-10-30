@@ -1,17 +1,13 @@
-import { useState, type FormEvent, type ChangeEvent } from "react";
-import { asObject } from "../specUtils";
+import type { FormEvent, ChangeEvent } from "react";
 
 type SpecDialogsProps = {
-  modal: "spec" | "request" | null;
+  modal: "spec" | null;
   renameOpen: boolean;
   error: string;
   specNameDraft: string;
   specUploadName: string;
   renameDraft: string;
-  currentPipelineName: string;
-  pipelineParams: Record<string, any>;
   creatingSpec: boolean;
-  creatingRequest: boolean;
   onCloseModal: () => void;
   onCloseRename: () => void;
   onSubmitCreate: (event: FormEvent<HTMLFormElement>) => void;
@@ -19,40 +15,22 @@ type SpecDialogsProps = {
   onSpecNameChange: (value: string) => void;
   onSpecFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onRenameChange: (value: string) => void;
-  onSubmitRequest: (event: FormEvent<HTMLFormElement>) => void;
 };
 
-function RequestParameter({ name, definition }: { name: string; definition: Record<string, any> }) {
-  const hasDefault = Object.prototype.hasOwnProperty.call(definition, "default");
-  const [override, setOverride] = useState(!hasDefault);
-  const numeric = definition.type === "number";
-  const multiline = !numeric && /prompt|lyrics/i.test(name);
-  return <div className="request-param">
-    <label>{name}<small>{numeric ? "number" : "string"} · {hasDefault ? "optional" : "required"}</small>
-      {multiline ? <textarea name={`param:${name}`} rows={3} disabled={!override} placeholder={`Enter ${name}`} /> :
-        <input name={`param:${name}`} type={numeric ? "number" : "text"} step={numeric ? "any" : undefined}
-          required={numeric && override} disabled={!override} placeholder={`Enter ${name}`} />}
-    </label>
-    {definition.description && <p className="param-description">{String(definition.description)}</p>}
-    {hasDefault && <label className="default-toggle"><input type="checkbox" checked={override} onChange={event => setOverride(event.target.checked)} />Override default: <code>{String(definition.default)}</code></label>}
-  </div>;
-}
-
 function CreateDialog({ props }: { props: SpecDialogsProps }) {
-  const { modal, error, specNameDraft, specUploadName, currentPipelineName, pipelineParams, creatingSpec } = props;
-  if (!modal) return null;
+  const { modal, error, specNameDraft, specUploadName, creatingSpec } = props;
+  if (modal !== "spec") return null;
 
   return (
     <div className="modal-backdrop" onClick={props.onCloseModal}>
-      <form className="simple-modal" onClick={(event) => event.stopPropagation()} onSubmit={modal === "spec" ? props.onSubmitCreate : props.onSubmitRequest}>
+      <form className="simple-modal" onClick={(event) => event.stopPropagation()} onSubmit={props.onSubmitCreate}>
         <div className="modal-top">
-          <div className="modal-icon">{modal === "spec" ? "◫" : "▤"}</div>
+          <div className="modal-icon">◫</div>
           <button type="button" className="icon-action" onClick={props.onCloseModal}>×</button>
         </div>
-        <h2>{modal === "spec" ? "Create a spec" : "New request"}</h2>
-        <p>{modal === "spec" ? "Create a spec from scratch or upload an existing spec.yaml." : `Add a request to ${currentPipelineName}.`}</p>
-        {modal === "spec" ? (
-          <>
+        <h2>Create a spec</h2>
+        <p>Create a spec from scratch or upload an existing spec.yaml.</p>
+        <>
             <label>Spec name<input name="name" autoFocus required value={specNameDraft} onChange={(event) => props.onSpecNameChange(event.target.value)} placeholder="e.g. Song with cover" /></label>
             <label>Description<input name="description" placeholder="What does this spec do?" /></label>
             <label className="spec-upload">
@@ -64,18 +42,11 @@ function CreateDialog({ props }: { props: SpecDialogsProps }) {
               </span>
             </label>
             <div className="form-hint">The uploaded YAML is validated and kept as the full spec. Pipeline params and nodes are available in the editor.</div>
-          </>
-        ) : (
-          <>
-              <p className="form-hint">The submitted values become this request’s payload. Its request ID is used as the label.</p>
-            {Object.entries(asObject(pipelineParams)).map(([name, raw]) => <RequestParameter key={`${currentPipelineName}:${name}`} name={name} definition={asObject(raw)} />)}
-            {Object.keys(asObject(pipelineParams)).length === 0 && <div className="form-hint">This pipeline has no declared parameters. The request payload will be an empty mapping.</div>}
-          </>
-        )}
+        </>
         {error && <div className="form-error">{error}</div>}
         <div className="modal-actions">
           <button type="button" className="subtle-button" onClick={props.onCloseModal}>Cancel</button>
-          <button className="request-button" type="submit" disabled={modal === "spec" ? creatingSpec : props.creatingRequest}>{modal === "spec" ? creatingSpec ? "Creating…" : "Create spec" : props.creatingRequest ? "Creating…" : "Create request"}</button>
+          <button className="request-button" type="submit" disabled={creatingSpec}>{creatingSpec ? "Creating…" : "Create spec"}</button>
         </div>
       </form>
     </div>

@@ -21,7 +21,7 @@ export function SpecHeader({ spec, dirty, saving, error, hasPipeline, onSave, on
       <div className="header-actions">
         {dirty && <span className="unsaved-label">Unsaved changes</span>}
         <button className="save-button" onClick={onSave} disabled={!dirty || saving || Boolean(error)}>{saving ? "Saving…" : "Save changes"}</button>
-        <button className="request-button" onClick={onNewRequest} disabled={!hasPipeline} title={dirty ? "Save a valid spec before creating requests" : undefined}>＋ New request</button>
+        <button className="request-button" onClick={onNewRequest} disabled={!hasPipeline} title={!hasPipeline ? "Save a pipeline before creating requests" : "Create a request from the saved pipeline"}>＋ New request</button>
       </div>
     </header>
   );

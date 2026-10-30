@@ -78,7 +78,7 @@ pipeline fields, including prepare. Existing stored YAML is not auto-migrated.
 - Upload and save check the supported format, unique names, dependency references
   and cycles, action lists, conditions and workload calls. Diagnostics name the
   field that needs correction. Runtime execution semantics remain owned by Mu.
-- Requests require a saved valid spec. Number inputs create JSON numbers; strings
+- Request forms use the saved spec independently of unsaved spec edits. Number inputs create JSON numbers; strings
   remain strings. Parameters with defaults are omitted unless **Override default**
   is selected, leaving template/default resolution to the worker. Request errors
   appear in the dialog. Saving edits made during an in-flight save remains pending.
@@ -86,3 +86,34 @@ pipeline fields, including prepare. Existing stored YAML is not auto-migrated.
 Legacy stored YAML is shown with diagnostics rather than migrated automatically.
 Move root prepare actions deliberately to the correct entry or pipeline, and
 replace dependency objects with a list of names before saving.
+
+
+## Creating and editing requests
+
+The Requests view uses a wide list/detail layout with search and status filters.
+Request names come from payload `name` or `title`, with the request ID as fallback.
+Inputs are displayed as readable text blocks, including long multiline lyrics;
+execution and worker information have a separate tab.
+
+**New request** opens a wide dialog with pipeline selection, large text fields,
+optional defaults in a separate column, field validation and JSON editing. It
+uses the saved pipeline schema even while unrelated spec edits are pending.
+Changing pipelines preserves the in-progress draft for each pipeline. JSON/form
+switching keeps string/number types and multiline content. Errors retain inputs.
+
+**Edit inputs** is available for waiting requests. `requests.editPayload` checks
+in one transaction that the request is still waiting, its payload matches the
+version originally opened, and the new inputs match the saved parameter schema.
+It only updates payload; status, assignment and node state are preserved. If a
+worker claims the request or another editor saves first, save is rejected with an
+explanation. Close and reopen to load the latest inputs.
+
+Use **Duplicate request** to prefill a new waiting request from any previous run.
+Requests that have left the waiting queue are read-only in this editor; duplicate
+them instead of changing inputs that a worker may already be executing.
+
+### Following request execution
+
+Requests appear as horizontal rows with status, creation time, node progress, and assigned worker. Expand each row independently to inspect its execution graph, node logs, and artifacts. Processing and possessed requests expand by default; opening another request never closes existing rows. Worker reports reactively update the graph and progress. Each expanded request has its own Follow execution control, which centers on a failed node first, then a running node. Selecting a node pauses following. The row’s three-dot button opens a menu for editing waiting requests, duplicating, or deleting a request. Deleting does not stop an already running worker.
+
+Requests can be deleted from the request details with confirmation. Deletion sets optional `requests.deletedAt` (Unix milliseconds) and preserves the record. It leaves the existing `status` unchanged; `deleted` is not a request status. Visibility and claim eligibility depend on `deletedAt`, independently of execution status. Deleted requests are excluded through indexes before list/inspection/claim limits and cannot be edited. Deletion is idempotent and does not cancel an already running worker; its reports remain accepted without clearing `deletedAt`.

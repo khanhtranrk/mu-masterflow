@@ -59,6 +59,14 @@ const options = httpAction(async () => new Response(null, { status: 204, headers
   "access-control-allow-methods": "GET,POST,OPTIONS",
 } }));
 
+// Public liveness probe: no authentication or database access required.
+http.route({
+  path: "/api/health",
+  method: "GET",
+  handler: httpAction(async () => json({ ok: true })),
+});
+http.route({ path: "/api/health", method: "OPTIONS", handler: options });
+
 const authorize = async (
   ctx: ActionCtx,
   request: Request,
