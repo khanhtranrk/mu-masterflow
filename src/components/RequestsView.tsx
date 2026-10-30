@@ -8,6 +8,7 @@ type RequestsViewProps = {
   pipelineNames: string[];
   currentPipelineName: string;
   requests: RequestItem[];
+  canCreateRequest: boolean;
   units: UnitItem[];
   activeRequest?: RequestItem;
   activeRequestPipelineNodes: PipelineNode[];
@@ -21,6 +22,7 @@ export function RequestsView({
   pipelineNames,
   currentPipelineName,
   requests,
+  canCreateRequest,
   units,
   activeRequest,
   activeRequestPipelineNodes,
@@ -57,7 +59,7 @@ export function RequestsView({
           <h2>Requests</h2>
           <p>{currentPipelineName ? `Requests attached to ${currentPipelineName}.` : "Add a pipeline before creating requests."}</p>
         </div>
-        <button className="subtle-button primary-subtle" onClick={onNewRequest} disabled={!currentPipelineName}>＋ New request</button>
+        <button className="subtle-button primary-subtle" onClick={onNewRequest} disabled={!currentPipelineName || !canCreateRequest}>＋ New request</button>
       </div>
       {pipelineNames.length > 1 && (
         <div className="pipeline-switcher request-pipelines">
@@ -82,7 +84,7 @@ export function RequestsView({
       ) : (
         <div className="empty-editor">
           <span>▤</span><b>No requests for {currentPipelineName || "this pipeline"}</b><small>Create a request to run this pipeline.</small>
-          <button className="subtle-button" onClick={onNewRequest} disabled={!currentPipelineName}>Create request</button>
+          <button className="subtle-button" onClick={onNewRequest} disabled={!currentPipelineName || !canCreateRequest}>Create request</button>
         </div>
       )}
       {activeRequest && (

@@ -45,7 +45,7 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
           const position = positions.get(name) ?? { x: 30, y: 34 };
           const run = node.run;
           const workload = asObject(run).workload;
-          const runLabel = typeof workload === "string" ? workload : Array.isArray(run) ? `${run.length} actions` : run ? "Custom run" : "No run defined";
+          const runLabel = typeof workload === "string" ? workload : run ? "Invalid workload call" : "Action-only node";
           const execution = nodeStates?.[name];
           const nodeStatus = execution?.status ?? (runtimeView ? "not_started" : "");
 

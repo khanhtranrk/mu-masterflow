@@ -15,8 +15,7 @@ export const asObject = (value: unknown): Record<string, any> =>
 
 export function nodeDependencyNames(node: PipelineNode): string[] {
   return (Array.isArray(node.depends_on) ? node.depends_on : [])
-    .map((dependency: any) => typeof dependency === "string" ? dependency : String(dependency?.node ?? dependency?.name ?? ""))
-    .filter(Boolean);
+    .filter((dependency: unknown): dependency is string => typeof dependency === "string" && dependency.length > 0);
 }
 
 export function layoutGraph(nodes: PipelineNode[]) {

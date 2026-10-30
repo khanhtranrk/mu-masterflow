@@ -27,10 +27,7 @@ pipeline:
           workload: qwen-image
       - name: separate-vocals
         depends_on:
-          - node: generate-song
-            condition:
-              operator: node_status
-              expected: success
+          - generate-song
         run:
           workload: demucs
 ```
@@ -46,7 +43,7 @@ Runtime node statuses are `queue`, `running`, `failed`, and `succeeded`. Node st
 ## Editing rules
 
 - Do not sort nodes and treat array order as execution order.
-- Do not discard `depends_on` conditions when editing graph edges.
+- `depends_on` is a list of node-name strings. Dependencies require success; dependency objects and conditions are unsupported.
 - Preserve node YAML and unknown keys when changing dependencies.
 - Allow each spec to define arbitrary pipeline names and workloads.
 - Do not mirror `params` or `nodes` into Convex spec fields; raw YAML is authoritative.
@@ -61,3 +58,31 @@ were removed from Mu. Put pipeline-specific preparation under
 `pipeline.<name>.prepare`: it runs only when a valid request uses that pipeline,
 once per worker invocation across batches. The Pipeline view edits preparation for the selected pipeline. Complete YAML editing preserves all
 pipeline fields, including prepare. Existing stored YAML is not auto-migrated.
+
+
+## Current editor behavior
+
+- **Entries** edits initialization and finalization independently for `direct_flow`
+  (`mu run`) and `master_flow` (`mu master-flow run <spec-slug>`).
+- **Pipeline** includes the node graph and dedicated YAML sections for params,
+  context and prepare. Prepare is lazy and shared across that pipeline's requests;
+  entry and pipeline setup do not receive request params.
+- Dependency checkboxes write string names. Renaming a node updates incoming
+  references. Adding an edge that creates a cycle is rejected. New nodes without
+  an available workload are action-only and omit `run`.
+- **Workloads** uses target, argv args, params, env, device_args and GPU units in
+  4 GiB bands. Zero units means CPU-only.
+- YAML syntax errors keep the raw text visible in the section being edited.
+  Structured edits cannot silently replace an invalid draft. Full YAML remains
+  available to fix unsupported or legacy fields. Unknown keys are preserved.
+- Upload and save check the supported format, unique names, dependency references
+  and cycles, action lists, conditions and workload calls. Diagnostics name the
+  field that needs correction. Runtime execution semantics remain owned by Mu.
+- Requests require a saved valid spec. Number inputs create JSON numbers; strings
+  remain strings. Parameters with defaults are omitted unless **Override default**
+  is selected, leaving template/default resolution to the worker. Request errors
+  appear in the dialog. Saving edits made during an in-flight save remains pending.
+
+Legacy stored YAML is shown with diagnostics rather than migrated automatically.
+Move root prepare actions deliberately to the correct entry or pipeline, and
+replace dependency objects with a list of names before saving.

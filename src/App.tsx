@@ -12,6 +12,9 @@ import { SpecSidebar } from "./components/SpecSidebar";
 import { SpecDialogs } from "./components/SpecDialogs";
 import { WorkloadsEditor } from "./components/WorkloadsEditor";
 import { asObject, starterYaml } from "./specUtils";
+import { isMapping, nextName, renameNode, requestPayload, specIssues } from "./specModel";
+import { YamlSection } from "./components/YamlSection";
+import { EntriesEditor } from "./components/EntriesEditor";
 import { sendSystemNotification } from "./systemNotifications";
 import { useAuthActions } from "@convex-dev/auth/react";
 import type { ConvexServerProfile } from "./connectionSettings";
@@ -66,8 +69,11 @@ function App({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [hasEdits, setHasEdits] = useState(false);
-  const [workloadDraft, setWorkloadDraft] = useState("");
-  const [nodeDraft, setNodeDraft] = useState("");
+  const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
+  const [editorErrors, setEditorErrors] = useState<Record<string, string>>({});
+  const [creatingRequest, setCreatingRequest] = useState(false);
+  const lastParsed = useRef<Record<string, any>>({});
+  const editRevision = useRef(0);
   const seenNotificationIds = useRef<Set<string> | null>(null);
   const { signOut } = useAuthActions();
 
@@ -147,16 +153,18 @@ function App({
   });
   const parsed = useMemo(() => {
     try {
-      return asObject(parse(yamlDraft || activeSpec?.yaml || starterYaml));
+      const value = parse(yamlDraft || activeSpec?.yaml || starterYaml);
+      if (isMapping(value)) lastParsed.current = value;
+      return lastParsed.current;
     } catch {
-      return {};
+      return lastParsed.current;
     }
   }, [yamlDraft, activeSpec?.yaml]);
   const pipelineMap = asObject(parsed.pipeline);
   const pipelineNames = Object.keys(pipelineMap);
   const currentPipelineName = pipelineNames.includes(activePipeline) ? activePipeline : pipelineNames[0] ?? "";
   const pipelineConfig = asObject(pipelineMap[currentPipelineName]);
-  const nodes: PipelineNode[] = Array.isArray(pipelineConfig.nodes) ? pipelineConfig.nodes : [];
+  const nodes: PipelineNode[] = Array.isArray(pipelineConfig.nodes) ? pipelineConfig.nodes.filter((node: unknown): node is PipelineNode => isMapping(node) && typeof node.name === "string") : [];
   const currentNode = nodes.find((node) => String(node.name) === selectedNodeName) ?? nodes[0];
   const workloadMap = asObject(parsed.workloads);
   const workloadNames = Object.keys(workloadMap);
@@ -164,11 +172,20 @@ function App({
   const workloadConfig = asObject(workloadMap[currentWorkloadName]);
   const pipelineRequests = requests.filter((request) => (request.pipelineName ?? pipelineNames[0]) === currentPipelineName);
   const activeRequest = requests.find((request) => request.convexId === selectedRequest);
-  const activeRequestPipelineNodes: PipelineNode[] = activeRequest
-    ? (Array.isArray(asObject(asObject(parsed.pipeline)[activeRequest.pipelineName ?? pipelineNames[0]]).nodes)
-      ? asObject(asObject(parsed.pipeline)[activeRequest.pipelineName ?? pipelineNames[0]]).nodes as PipelineNode[] : [])
-    : [];
+  const savedDocument = useMemo(() => {
+    try { return asObject(parse(activeSpec?.yaml ?? "{}")); } catch { return {}; }
+  }, [activeSpec?.yaml]);
+  const savedRequestPipeline = activeRequest ? asObject(asObject(savedDocument.pipeline)[activeRequest.pipelineName]) : {};
+  const activeRequestPipelineNodes: PipelineNode[] = Array.isArray(savedRequestPipeline.nodes)
+    ? savedRequestPipeline.nodes.filter((node: unknown): node is PipelineNode => isMapping(node) && typeof node.name === "string") : [];
   const dirty = hasEdits;
+  const workloadKey = `workloads.${currentWorkloadName}`;
+  const nodeKey = `pipeline.${currentPipelineName}.nodes.${currentNode?.name ?? ""}`;
+  const workloadDraft = sectionDrafts[workloadKey] ?? stringify(workloadConfig).trimEnd();
+  const nodeDraft = sectionDrafts[nodeKey] ?? (currentNode ? stringify(currentNode).trimEnd() : "");
+  const issues = specIssues(parsed);
+  const draftError = Object.values(editorErrors)[0] ?? "";
+  const editorBlocked = Boolean(draftError || issues.length);
 
   useEffect(() => {
     if (specs.length === 0) {
@@ -191,19 +208,13 @@ function App({
     setSelectedNodeName("");
     setError("");
     setHasEdits(false);
+    setSectionDrafts({});
+    setEditorErrors({});
   }, [activeSpec?._id]);
-
-  useEffect(() => {
-    setWorkloadDraft(stringify(asObject(asObject(asObject(parse(yamlDraft || activeSpec?.yaml || starterYaml)).workloads)[currentWorkloadName])).trimEnd());
-  }, [activeSpec?._id, currentWorkloadName]);
 
   useEffect(() => {
     if (!nodes.some((node) => String(node.name) === selectedNodeName)) setSelectedNodeName(String(nodes[0]?.name ?? ""));
   }, [activeSpec?._id, currentPipelineName, nodes.map((node) => node.name).join("|")]);
-
-  useEffect(() => {
-    setNodeDraft(currentNode ? stringify(currentNode).trimEnd() : "");
-  }, [activeSpec?._id, currentPipelineName, currentNode?.name]);
 
   function notice(message: string) {
     setToast(message);
@@ -212,14 +223,15 @@ function App({
 
   function editDocument(update: (document: Record<string, any>) => void) {
     try {
-      if (error) throw new Error("Fix the current YAML error before making another structured edit.");
+      if (draftError) throw new Error("Fix the current YAML error before making another structured edit.");
       const document = asObject(parse(yamlDraft || activeSpec?.yaml || starterYaml));
       document.pipeline = asObject(document.pipeline);
       document.workloads = asObject(document.workloads);
       if (currentPipelineName) document.pipeline[currentPipelineName] = asObject(document.pipeline[currentPipelineName]);
-      if (currentWorkloadName) document.workloads[currentWorkloadName] = workloadDraft.trim() ? asObject(parse(workloadDraft)) : {};
       update(document);
       setYamlDraft(stringify(document));
+      setSectionDrafts({});
+      editRevision.current++;
       setHasEdits(true);
       setError("");
     } catch (e) {
@@ -227,91 +239,83 @@ function App({
     }
   }
 
-  function changePipelinePrepare(text: string) {
+  function changeYamlPart(key: string, text: string, shape: "mapping" | "actions", update: (document: Record<string, any>, value: any) => void) {
+    setSectionDrafts(drafts => ({ ...drafts, [key]: text }));
+    editRevision.current++;
+    setHasEdits(true);
     try {
-      const value = text.trim() ? parse(text) : [];
-      if (!Array.isArray(value) || value.some(action => !action || typeof action !== "object" || Array.isArray(action))) {
-        throw new Error("Pipeline prepare must be a list of action mappings.");
+      const value = text.trim() ? parse(text) : shape === "actions" ? [] : {};
+      if (shape === "mapping" ? !isMapping(value) : !Array.isArray(value) || value.some(action => !isMapping(action))) {
+        throw new Error(shape === "mapping" ? "Expected a YAML mapping." : "Expected a list of action mappings.");
       }
-      editDocument(document => {
-        document.pipeline[currentPipelineName].prepare = value;
-      });
+      const document = parse(yamlDraft || activeSpec?.yaml || starterYaml);
+      if (!isMapping(document)) throw new Error("Fix the complete spec YAML first.");
+      update(document, value);
+      setYamlDraft(stringify(document));
+      setEditorErrors(errors => { const next = { ...errors }; delete next[key]; return next; });
+      setError("");
     } catch (e) {
-      setError(e instanceof Error ? `YAML: ${e.message}` : "Invalid YAML");
+      setEditorErrors(errors => ({ ...errors, [key]: `${key}: ${e instanceof Error ? e.message : "Invalid YAML"}` }));
     }
   }
 
-  function changeSection(section: "entries", text: string) {
-    try {
-      const value = text.trim() ? parse(text) : {};
-      editDocument((document) => { document[section] = value; });
-    } catch (e) {
-      setError(e instanceof Error ? `YAML: ${e.message}` : "Invalid YAML");
-    }
+  function changePipelineField(field: "params" | "context" | "prepare", text: string) {
+    changeYamlPart(`pipeline.${currentPipelineName}.${field}`, text, field === "prepare" ? "actions" : "mapping", (document, value) => {
+      document.pipeline[currentPipelineName][field] = value;
+    });
+  }
+
+  function changeEntry(entry: "direct_flow" | "master_flow", phase: "initialization" | "finalization", text: string) {
+    changeYamlPart(`entries.${entry}.${phase}`, text, "actions", (document, value) => {
+      document.entries = asObject(document.entries);
+      document.entries[entry] = { ...asObject(document.entries[entry]), [phase]: value };
+    });
   }
 
   function changeWholeSpec(text: string) {
+    editRevision.current++;
     setYamlDraft(text);
     setHasEdits(true);
     try {
       const value = parse(text);
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("The spec root must be a YAML mapping.");
-      const pipelines = asObject(asObject(value).pipeline);
-      const activePipelineConfig = asObject(pipelines[currentPipelineName]);
-      const activeNode = (Array.isArray(activePipelineConfig.nodes) ? activePipelineConfig.nodes : []).find((node: PipelineNode) => String(node.name) === selectedNodeName);
-      if (activeNode) setNodeDraft(stringify(activeNode).trimEnd());
-      const activeWorkload = asObject(asObject(value).workloads)[currentWorkloadName];
-      if (activeWorkload) setWorkloadDraft(stringify(activeWorkload).trimEnd());
+      if (!isMapping(value)) throw new Error("The spec root must be a YAML mapping.");
+      setSectionDrafts({});
+      setEditorErrors({});
       setError("");
     } catch (e) {
-      setError(e instanceof Error ? `YAML: ${e.message}` : "Invalid YAML");
+      setEditorErrors(errors => ({ ...errors, spec: e instanceof Error ? `YAML: ${e.message}` : "Invalid YAML" }));
     }
   }
 
   function changeWorkloadText(text: string) {
-    setWorkloadDraft(text);
-    setHasEdits(true);
-    try {
-      const value = text.trim() ? parse(text) : {};
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("A workload must be a YAML mapping.");
-      const document = asObject(parse(yamlDraft || activeSpec?.yaml || starterYaml));
+    changeYamlPart(workloadKey, text, "mapping", (document, value) => {
       document.workloads = asObject(document.workloads);
       document.workloads[currentWorkloadName] = value;
-      setYamlDraft(stringify(document));
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? `YAML: ${e.message}` : "Invalid YAML");
-    }
+    });
   }
 
   function changeNodeDraft(text: string) {
-    setNodeDraft(text);
-    setHasEdits(true);
-    try {
-      const value = parse(text);
-      if (!value || typeof value !== "object" || Array.isArray(value) || !String(value.name ?? "").trim()) throw new Error("A node must be a YAML mapping with a name.");
-      const document = asObject(parse(yamlDraft || activeSpec?.yaml || starterYaml));
-      const config = asObject(asObject(document.pipeline)[currentPipelineName]);
-      const list: PipelineNode[] = Array.isArray(config.nodes) ? [...config.nodes] : [];
-      const index = list.findIndex((node) => String(node.name) === String(currentNode?.name));
-      if (index < 0) throw new Error("Selected node no longer exists.");
-      list[index] = value;
-      config.nodes = list;
-      document.pipeline[currentPipelineName] = config;
-      setYamlDraft(stringify(document));
-      setSelectedNodeName(String(value.name));
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? `Node YAML: ${e.message}` : "Invalid YAML");
-    }
+    changeYamlPart(nodeKey, text, "mapping", (document, value) => {
+      if (typeof value.name !== "string" || !value.name.trim()) throw new Error("A node requires a non-empty name.");
+      const config = document.pipeline[currentPipelineName];
+      config.nodes = renameNode(config.nodes, String(currentNode?.name), value as PipelineNode);
+      if (value.name !== currentNode?.name) {
+        setSectionDrafts(drafts => {
+          const next = { ...drafts }; delete next[nodeKey];
+          next[`pipeline.${currentPipelineName}.nodes.${value.name}`] = text;
+          return next;
+        });
+      }
+      setSelectedNodeName(value.name);
+    });
   }
 
   function addNode() {
-    const name = `node_${nodes.length + 1}`;
+    const name = nextName("node", nodes.map(node => node.name));
     editDocument((document) => {
       const config = asObject(document.pipeline?.[currentPipelineName]);
       const list = Array.isArray(config.nodes) ? [...config.nodes] : [];
-      list.push({ name, run: { workload: workloadNames[0] ?? "" } });
+      list.push({ name, ...(workloadNames[0] ? { run: { workload: workloadNames[0], args: {} } } : { before_run: [] }) });
       config.nodes = list;
       document.pipeline[currentPipelineName] = config;
     });
@@ -340,19 +344,23 @@ function App({
       const node = { ...list[index] };
       const dependencies = Array.isArray(node.depends_on) ? [...node.depends_on] : [];
       const existing = dependencies.findIndex((dependency: any) => String(typeof dependency === "string" ? dependency : dependency?.node ?? dependency?.name) === dependencyName);
-      if (enabled && existing < 0) dependencies.push({ node: dependencyName, condition: { operator: "node_status", expected: "succeeded" } });
+      if (enabled && existing < 0) dependencies.push(dependencyName);
       if (!enabled && existing >= 0) dependencies.splice(existing, 1);
       if (dependencies.length) node.depends_on = dependencies;
       else delete node.depends_on;
+      const candidate = { ...document, pipeline: { ...document.pipeline, [currentPipelineName]: { ...config, nodes: list.map((item, i) => i === index ? node : item) } } };
+      const cycle = specIssues(candidate).find(issue => issue.includes("dependency cycle"));
+      if (cycle) throw new Error(cycle);
       list[index] = node;
+      setSectionDrafts(drafts => { const next = { ...drafts }; delete next[nodeKey]; return next; });
       config.nodes = list;
       document.pipeline[currentPipelineName] = config;
     });
   }
 
   function addPipeline() {
-    const name = `pipeline_${pipelineNames.length + 1}`;
-    editDocument((document) => { document.pipeline = { ...asObject(document.pipeline), [name]: { params: {}, nodes: [] } }; });
+    const name = nextName("pipeline", pipelineNames);
+    editDocument((document) => { document.pipeline = { ...asObject(document.pipeline), [name]: { params: {}, context: {}, prepare: [], nodes: [] } }; });
     setActivePipeline(name);
   }
 
@@ -367,8 +375,8 @@ function App({
   }
 
   function addWorkload() {
-    const name = `workload_${workloadNames.length + 1}`;
-    editDocument((document) => { document.workloads = { ...asObject(document.workloads), [name]: { target: "", units: 0 } }; });
+    const name = nextName("workload", workloadNames);
+    editDocument((document) => { document.workloads = { ...asObject(document.workloads), [name]: { params: {}, target: "", args: [], device_args: [], env: {}, units: 0 } }; });
     setSelectedWorkload(name);
   }
 
@@ -385,13 +393,16 @@ function App({
   async function saveSpec() {
     if (!activeSpec) return;
     try {
+      if (draftError) throw new Error(draftError);
       const parsedDocument = parse(yamlDraft);
+      const validation = specIssues(parsedDocument);
+      if (validation.length) throw new Error(validation[0]);
       if (!parsedDocument || typeof parsedDocument !== "object" || Array.isArray(parsedDocument)) throw new Error("The spec root must be a YAML mapping.");
       setSaving(true);
       const savedYaml = yamlDraft;
+      const savedRevision = editRevision.current;
       await updateSpec({ id: activeSpec._id as never, name: activeSpec.name, description: activeSpec.description, yaml: savedYaml });
-      setYamlDraft(savedYaml);
-      setHasEdits(false);
+      if (savedRevision === editRevision.current) setHasEdits(false);
       setError("");
       notice("Spec saved");
     } catch (e) {
@@ -419,11 +430,8 @@ function App({
         document = parsedFile as Record<string, any>;
         if (document.pipeline !== undefined && (!document.pipeline || typeof document.pipeline !== "object" || Array.isArray(document.pipeline))) throw new Error("The pipeline section must be a mapping of pipeline names to definitions.");
       }
-      const pipelines = asObject(document.pipeline);
-      Object.entries(pipelines).forEach(([pipelineName, config]) => {
-        const pipelineNodes = asObject(config).nodes;
-        if (pipelineNodes !== undefined && !Array.isArray(pipelineNodes)) throw new Error(`pipeline.${pipelineName}.nodes must be a list.`);
-      });
+      const validation = specIssues(document);
+      if (validation.length) throw new Error(validation[0]);
       const slug = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `spec-${Date.now()}`;
       setCreatingSpec(true);
       await createSpec({ name, slug, description, yaml });
@@ -452,14 +460,17 @@ function App({
     event.preventDefault();
     if (!activeSpec || !currentPipelineName) return;
     const data = new FormData(event.currentTarget);
-    const payload: Record<string, unknown> = {};
-    for (const [key, value] of data.entries()) if (key.startsWith("param:")) payload[key.slice(6)] = String(value);
     try {
+      if (dirty || editorBlocked) throw new Error("Save a valid spec before creating requests.");
+      const payload = requestPayload(asObject(pipelineConfig.params), data);
+      setCreatingRequest(true);
       await createRequest({ specSlug: activeSpec.slug, pipelineName: currentPipelineName, payload });
       setModal(null);
       notice("Request added");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create request");
+    } finally {
+      setCreatingRequest(false);
     }
   }
 
@@ -533,6 +544,7 @@ function App({
   }
 
   function openRequestModal() {
+    if (dirty || editorBlocked) { setError("Save a valid spec before creating requests."); return; }
     setError("");
     setModal("request");
   }
@@ -590,8 +602,8 @@ function App({
               spec={activeSpec}
               dirty={dirty}
               saving={saving}
-              error={error}
-              hasPipeline={Boolean(currentPipelineName)}
+              error={editorBlocked ? draftError || issues[0] : ""}
+              hasPipeline={Boolean(currentPipelineName) && !dirty && !editorBlocked}
               onSave={() => void saveSpec()}
               onNewRequest={openRequestModal}
             />
@@ -601,6 +613,13 @@ function App({
               onChange={(tab) => { setActiveTab(tab); setSelectedRequest(null); }}
             />
             <div className="editor-scroll">
+              {(draftError || issues.length > 0) && <div className="spec-issues" role="alert">
+                <b>Spec needs attention</b>
+                <ul>{[...Object.values(editorErrors), ...issues].slice(0, 8).map((issue, index) => <li key={index}>{issue}</li>)}</ul>
+                {(issues.length + Object.keys(editorErrors).length > 8) && <p>More issues remain in this spec.</p>}
+                <button className="subtle-button" onClick={() => setActiveTab("spec-yaml")}>Open Spec YAML</button>
+              </div>}
+
               {activeTab === "pipeline" && (
                 <>
                 <PipelineEditor
@@ -618,24 +637,18 @@ function App({
                   onToggleDependency={toggleDependency}
                   onChangeNodeDraft={changeNodeDraft}
                 />
-                {currentPipelineName && <ConfigEditor
-                  title="Pipeline prepare"
-                  description={`Prepare ${currentPipelineName} once when its first valid request arrives. Unused pipelines are not prepared.`}
-                  value={stringify(pipelineConfig.prepare ?? []).trimEnd()}
-                  onChange={changePipelinePrepare}
-                  placeholder={'- type: create_dir\n  path: "{session[cache_dir]}/models"'}
-                />}
+                {currentPipelineName && <div className="pipeline-config-sections editor-view">
+                  {(["params", "context", "prepare"] as const).map(field => {
+                    const key = `pipeline.${currentPipelineName}.${field}`;
+                    const hints = { params: "Declared request parameters. Use type: string or number; default makes a parameter optional.", context: "Shared context, merged before preparation and request params. Put request-dependent values in node context.", prepare: "Actions run once when the first valid request selects this pipeline. Reused across batches; no request params here." };
+                    return <YamlSection key={key} title={`Pipeline ${field}`} description={hints[field]}
+                      value={sectionDrafts[key] ?? stringify(pipelineConfig[field] ?? (field === "prepare" ? [] : {})).trimEnd()}
+                      error={editorErrors[key]} onChange={text => changePipelineField(field, text)} />;
+                  })}
+                </div>}
                 </>
               )}
-              {activeTab === "entries" && (
-                <ConfigEditor
-                  title="Entries"
-                  description="Initialization and finalization actions for direct_flow and master_flow. Pipeline setup belongs in pipeline prepare."
-                  value={stringify(parsed.entries ?? {}).trimEnd()}
-                  onChange={(text) => changeSection("entries", text)}
-                  placeholder={'direct_flow:\n  initialization: []\n  finalization: []\nmaster_flow:\n  initialization: []\n  finalization: []'}
-                />
-              )}
+              {activeTab === "entries" && <EntriesEditor entries={asObject(parsed.entries)} drafts={sectionDrafts} errors={editorErrors} onChange={changeEntry} />}
               {activeTab === "spec-yaml" && (
                 <ConfigEditor
                   title="Complete spec.yaml"
@@ -664,6 +677,7 @@ function App({
                 <RequestsView
                   pipelineNames={pipelineNames}
                   currentPipelineName={currentPipelineName}
+                  canCreateRequest={!dirty && !editorBlocked}
                   requests={pipelineRequests}
                   units={remoteUnits ?? []}
                   activeRequest={activeRequest}
@@ -697,6 +711,7 @@ function App({
         currentPipelineName={currentPipelineName}
         pipelineParams={pipelineConfig.params}
         creatingSpec={creatingSpec}
+        creatingRequest={creatingRequest}
         onCloseModal={() => setModal(null)}
         onCloseRename={() => setRenameOpen(false)}
         onSubmitCreate={addSpec}

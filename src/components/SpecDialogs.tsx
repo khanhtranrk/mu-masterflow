@@ -1,4 +1,4 @@
-import type { FormEvent, ChangeEvent } from "react";
+import { useState, type FormEvent, type ChangeEvent } from "react";
 import { asObject } from "../specUtils";
 
 type SpecDialogsProps = {
@@ -11,6 +11,7 @@ type SpecDialogsProps = {
   currentPipelineName: string;
   pipelineParams: Record<string, any>;
   creatingSpec: boolean;
+  creatingRequest: boolean;
   onCloseModal: () => void;
   onCloseRename: () => void;
   onSubmitCreate: (event: FormEvent<HTMLFormElement>) => void;
@@ -20,6 +21,22 @@ type SpecDialogsProps = {
   onRenameChange: (value: string) => void;
   onSubmitRequest: (event: FormEvent<HTMLFormElement>) => void;
 };
+
+function RequestParameter({ name, definition }: { name: string; definition: Record<string, any> }) {
+  const hasDefault = Object.prototype.hasOwnProperty.call(definition, "default");
+  const [override, setOverride] = useState(!hasDefault);
+  const numeric = definition.type === "number";
+  const multiline = !numeric && /prompt|lyrics/i.test(name);
+  return <div className="request-param">
+    <label>{name}<small>{numeric ? "number" : "string"} · {hasDefault ? "optional" : "required"}</small>
+      {multiline ? <textarea name={`param:${name}`} rows={3} disabled={!override} placeholder={`Enter ${name}`} /> :
+        <input name={`param:${name}`} type={numeric ? "number" : "text"} step={numeric ? "any" : undefined}
+          required={numeric && override} disabled={!override} placeholder={`Enter ${name}`} />}
+    </label>
+    {definition.description && <p className="param-description">{String(definition.description)}</p>}
+    {hasDefault && <label className="default-toggle"><input type="checkbox" checked={override} onChange={event => setOverride(event.target.checked)} />Override default: <code>{String(definition.default)}</code></label>}
+  </div>;
+}
 
 function CreateDialog({ props }: { props: SpecDialogsProps }) {
   const { modal, error, specNameDraft, specUploadName, currentPipelineName, pipelineParams, creatingSpec } = props;
@@ -51,18 +68,14 @@ function CreateDialog({ props }: { props: SpecDialogsProps }) {
         ) : (
           <>
               <p className="form-hint">The submitted values become this request’s payload. Its request ID is used as the label.</p>
-            {Object.entries(asObject(pipelineParams)).map(([name, raw]) => {
-              const definition = asObject(raw);
-              const multiline = definition.type === "string" && (name.toLowerCase().includes("prompt") || name.toLowerCase().includes("lyrics"));
-              return <label key={name}>{name}{multiline ? <textarea name={`param:${name}`} rows={3} placeholder={`Enter ${name}`} /> : <input name={`param:${name}`} placeholder={`Enter ${name}`} />}</label>;
-            })}
-            {Object.keys(asObject(pipelineParams)).length === 0 && <div className="form-hint">This pipeline has no declared parameters yet. You can add them in Spec YAML.</div>}
+            {Object.entries(asObject(pipelineParams)).map(([name, raw]) => <RequestParameter key={`${currentPipelineName}:${name}`} name={name} definition={asObject(raw)} />)}
+            {Object.keys(asObject(pipelineParams)).length === 0 && <div className="form-hint">This pipeline has no declared parameters. The request payload will be an empty mapping.</div>}
           </>
         )}
-        {modal === "spec" && error && <div className="form-error">{error}</div>}
+        {error && <div className="form-error">{error}</div>}
         <div className="modal-actions">
           <button type="button" className="subtle-button" onClick={props.onCloseModal}>Cancel</button>
-          <button className="request-button" type="submit" disabled={creatingSpec}>{modal === "spec" ? creatingSpec ? "Creating…" : "Create spec" : "Create request"}</button>
+          <button className="request-button" type="submit" disabled={modal === "spec" ? creatingSpec : props.creatingRequest}>{modal === "spec" ? creatingSpec ? "Creating…" : "Create spec" : props.creatingRequest ? "Creating…" : "Create request"}</button>
         </div>
       </form>
     </div>

@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
 import type * as http from "../http.js";
 import type * as notifications from "../notifications.js";
+import type * as requestSelection from "../requestSelection.js";
 import type * as requests from "../requests.js";
 import type * as specs from "../specs.js";
 import type * as unitTokens from "../unitTokens.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   authz: typeof authz;
   http: typeof http;
   notifications: typeof notifications;
+  requestSelection: typeof requestSelection;
   requests: typeof requests;
   specs: typeof specs;
   unitTokens: typeof unitTokens;

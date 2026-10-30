@@ -39,7 +39,7 @@ export function PipelineEditor({
         <div>
           <span className="view-kicker">DEPENDENCY GRAPH</span>
           <h2>Pipeline graph</h2>
-          <p>Nodes run when their <code>depends_on</code> conditions are met. Unlinked nodes are independent.</p>
+          <p>Nodes run after all named dependencies succeed. Unlinked nodes are independent.</p>
         </div>
         <button className="subtle-button" onClick={onAddPipeline}>＋ Add pipeline</button>
       </div>
@@ -64,8 +64,8 @@ export function PipelineEditor({
                     <div><span className="view-kicker">NODE CONFIGURATION</span><h3>{String(currentNode.name)}</h3></div>
                     <button className="icon-action" onClick={() => onRemoveNode(String(currentNode.name))} aria-label={`Remove ${String(currentNode.name)}`}>×</button>
                   </div>
-                  <p className="inspector-help">Edit the full node YAML. Conditions, context, hooks, workload/action runs, and custom fields are preserved.</p>
-                  <label className="advanced-label">Depends on<small>Each edge defaults to predecessor status = succeeded. Edit its condition below as YAML.</small></label>
+                  <p className="inspector-help">Edit the full node YAML. Use run.workload with an args mapping, or omit run for action-only nodes. before_run, after_run, finally, conditions and custom fields are preserved.</p>
+                  <label className="advanced-label">Depends on<small>Names only: depends_on: [node_a, node_b]. A dependency must succeed, including its finally actions.</small></label>
                   <div className="dependency-checks">
                     {nodes.filter((node) => String(node.name) !== String(currentNode.name)).map((node) => (
                       <label key={String(node.name)}>
@@ -80,7 +80,7 @@ export function PipelineEditor({
                   </div>
                   <label className="advanced-label node-yaml-label">
                     Full node definition
-                    <textarea className="code-editor node-code" spellCheck={false} value={nodeDraft} onChange={(event) => onChangeNodeDraft(event.target.value)} />
+                    <textarea aria-label="Full node definition" className="code-editor node-code" spellCheck={false} value={nodeDraft} onChange={(event) => onChangeNodeDraft(event.target.value)} />
                   </label>
                 </>
               ) : <div className="inspector-empty"><b>No node selected</b><small>Add nodes to make a pipeline graph.</small></div>}

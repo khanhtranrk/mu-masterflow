@@ -16,7 +16,7 @@ export function WorkloadsEditor({ names, currentName, config, draft, onSelect, o
   return (
     <section className="editor-view">
       <div className="view-heading">
-        <div><span className="view-kicker">EXECUTABLES</span><h2>Workloads</h2><p>Reusable commands that pipeline steps can run.</p></div>
+        <div><span className="view-kicker">EXECUTABLES</span><h2>Workloads</h2><p>Reusable subprocess commands called through node run.workload.</p></div>
         <button className="subtle-button" onClick={onAdd}>＋ Add workload</button>
       </div>
       {names.length > 0 ? (
@@ -28,12 +28,12 @@ export function WorkloadsEditor({ names, currentName, config, draft, onSelect, o
             <div className="workload-detail-title"><b>{currentName}</b><button className="icon-action" onClick={onRemove} aria-label="Remove workload">×</button></div>
             <div className="field-row">
               <label>Target<input value={String(config.target ?? "")} onChange={(event: ChangeEvent<HTMLInputElement>) => onChangeField("target", event.target.value)} placeholder="/path/to/executable" /></label>
-              <label>Units<input type="number" min="0" value={Number(config.units ?? 0)} onChange={(event: ChangeEvent<HTMLInputElement>) => onChangeField("units", Number(event.target.value))} /></label>
+              <label>GPU units (4 GiB)<input type="number" min="0" step="any" value={Number(config.units ?? 0)} onChange={(event: ChangeEvent<HTMLInputElement>) => onChangeField("units", Number(event.target.value))} /></label>
             </div>
             <label className="advanced-label">
               Full workload definition
-              <small>Edit params, args, environment, and device options as YAML.</small>
-              <textarea className="code-editor workload-code" spellCheck={false} value={draft} onChange={(event) => onChangeDraft(event.target.value)} />
+              <small>Declare params, target, argv args, env, device_args and units. units: 0 is CPU-only; use schedule templates only in device_args.</small>
+              <textarea aria-label="Full workload definition" className="code-editor workload-code" spellCheck={false} value={draft} onChange={(event) => onChangeDraft(event.target.value)} />
             </label>
           </div>
         </div>

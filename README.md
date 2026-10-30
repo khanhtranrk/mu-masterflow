@@ -38,3 +38,10 @@ Workers use `mu master-flow run <spec-slug>` with `MU_MASTER_FLOW_SERVER`
 Specs declare `entries.direct_flow` / `entries.master_flow` initialization and
 finalization, plus lazy `pipeline.<name>.prepare`. See [spec lifecycle](docs/spec-yaml.md#worker-lifecycle)
 and [worker API / batch options](docs/worker-hooks.md#mu-cli-integration).
+
+
+The spec editor follows the current Mu format: entry lifecycle actions, lazy
+pipeline preparation, pipeline params/context and node-name dependencies.
+Upload/save diagnostics identify unsupported legacy fields. New request forms
+preserve number types and omit defaults unless overridden. See
+[editor behavior](docs/spec-yaml.md#current-editor-behavior).
