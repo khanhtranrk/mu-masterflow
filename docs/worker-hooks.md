@@ -1,25 +1,408 @@
-# Worker HTTP hooks
+# Worker HTTP API
 
-Worker hook requests require a Unit token created in the desktop Unit tokens page. Token management uses the normal Convex client API; worker hook endpoints remain HTTP actions.
+This reference describes worker integration with MasterFlow, based on the router in [`convex/http.ts`](../convex/http.ts) and its underlying queries and mutations.
+
+Worker routes use the **`/api/`** prefix. The previous `/hooks/` prefix has been replaced without compatibility aliases. Update worker URLs when deploying this backend version. Convex Auth routes remain unchanged.
+
+## 1. Connection and authentication
+
+### Base URL
+
+Use the selected server profile's **Convex HTTP site URL**.
+
+| Environment | Example HTTP site URL | Convex client/API URL (not for worker requests) |
+| --- | --- | --- |
+| Default self-hosted Docker | `http://127.0.0.1:3211` | `http://127.0.0.1:3210` |
+| Convex Cloud | `https://<deployment>.convex.site` | `https://<deployment>.convex.cloud` |
+
+Use `127.0.0.1` only when the worker shares the backend's host/network namespace. Remote workers need a reachable HTTP site address. `VITE_CONVEX_SITE_URL` can bootstrap the server profile during development.
+
+The examples use `Host: localhost:3211`. Replace the host, `<UNIT_TOKEN>`, `<REQUEST_ID>`, and `<NOTIFICATION_ID>` with actual values. Transport headers such as `Content-Length` are calculated by the HTTP client/server and omitted here.
+
+### Unit token
+
+Create a token in **Settings → Unit tokens** in the desktop app. After Convex Auth sign-in, the desktop calls `unitTokens.list`, `unitTokens.create`, `unitTokens.update`, and `unitTokens.revoke` through the Convex client. There is no worker HTTP endpoint for token management, and workers do not need an admin key.
+
+The browser generates a random 256-bit token, sends its SHA-256 hash to the backend, and displays the plaintext once. Keep the plaintext in the worker's secret configuration; never put it in source code, logs, or documentation. Authenticated deployment users share token management access.
+
+Every `GET` and `POST` in this reference requires:
 
 ```http
-Authorization: Bearer <worker-auth-token>
-Content-Type: application/json
+Authorization: Bearer <UNIT_TOKEN>
 ```
 
-Worker tokens are stored as hashes; plaintext is generated in the browser and shown only at creation time. Never commit or log plaintext tokens. Paths below are relative to the HTTP site URL of the currently selected Convex server profile (`VITE_CONVEX_SITE_URL` can optionally bootstrap this profile for local development).
+The `Bearer ` prefix must match this format. Tokens must exist, be unrevoked, and be unexpired. Tokens are not bound to a specific `unitId`, spec, or request; the API does not verify request ownership by worker. The backend updates `lastUsedAt` at most approximately once per minute during valid token use.
 
-## Unit token management
+For `POST`, send a JSON body with:
 
-The desktop calls the public Convex functions `unitTokens.list`, `unitTokens.create`, `unitTokens.update`, and `unitTokens.revoke` directly after Convex Auth sign-in. No admin key or token-management HTTP route is required. Any authenticated user on the deployment can manage Unit tokens, so use this setup only where shared access is acceptable.
+```http
+Content-Type: application/json
+Accept: application/json
+```
 
-The browser generates a cryptographically random 256-bit token, computes its SHA-256 hash, and sends only the hash to `unitTokens.create`. The plaintext is shown once and cannot be recovered from the token list. Store it in the Unit's secret configuration.
+`Accept` is recommended but not required by the router. For spec retrieval, use `Accept: application/yaml`; no request body or request `Content-Type` is needed. The router parses POST bodies with `request.json()`, so setting a header alone does not make an invalid body valid JSON.
 
-## `POST /hooks/notifications/send`
+### Endpoint overview
 
-Create a notification that is delivered reactively to the desktop app. The request requires an active worker bearer token and a JSON body with non-empty `title` and `message` strings. `tags` is optional and must be an array of strings.
+| Method | Path | Purpose | Successful response |
+| --- | --- | --- | --- |
+| `POST` | `/api/units/heartbeat` | Register or update a unit | `200`, JSON `{ "ok": true }` |
+| `POST` | `/api/requests/claim` | Claim waiting requests | `200`, JSON array |
+| `GET` | `/api/specs/{specSlug}` | Retrieve the original YAML | `200`, YAML |
+| `POST` | `/api/requests/report` | Update request and node state | `200`, JSON `{ "ok": true }` |
+| `POST` | `/api/notifications/send` | Create a desktop notification | `200`, JSON with notification ID |
+| `OPTIONS` | The paths above | CORS preflight | `204`, no body |
 
-```json
+Integration flow: register the unit with a heartbeat → claim work → fetch YAML using `specSlug` and select the returned `pipelineName` → execute the DAG → report progress/results. Send additional heartbeats to update presence and notifications as needed. The API does not prescribe a heartbeat or polling interval.
+
+## 2. Register or update a unit — `POST /api/units/heartbeat`
+
+Creates a unit if `unitId` is new, or updates the existing unit. Each successful call sets `lastSeen` to the server time in Unix milliseconds.
+
+### Body
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `unitId` | string | Yes | Must not be empty or whitespace-only; stable worker identifier. |
+| `status` | string | Yes | `online` or `offline`. |
+| `unitType` | string | No | Defaults to `"unknown"`. |
+| `workingDir` | string | No | Defaults to `""`. |
+| `devices` | array of objects | No | Defaults to `[]`; each item requires `family` (string) and `index` (number). |
+
+All fields above are written on every heartbeat. Omitting `unitType`, `workingDir`, or `devices` writes the defaults, even for an existing unit. The code also treats `devices: null` as the default; prefer an array or omit the field. Device `index` is checked as a number, without a nonnegative-integer restriction.
+
+### Example request
+
+```http
+POST /api/units/heartbeat HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Content-Type: application/json
+Accept: application/json
+
+{
+  "unitId": "mu-karen",
+  "status": "online",
+  "unitType": "Karen",
+  "workingDir": "/worker/path",
+  "devices": [
+    { "family": "cuda", "index": 0 },
+    { "family": "cuda", "index": 1 }
+  ]
+}
+```
+
+### Successful response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"ok":true}
+```
+
+The response does not include the unit record or `lastSeen`. To mark the unit offline, call the same endpoint with `status: "offline"` and the unit details you want to retain.
+
+### Errors
+
+`401`: see [shared authentication errors](#7-errors-and-response-handling). `400`: invalid JSON/body, missing `unitId`, invalid status, or incorrect field types. Example:
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"error":"Invalid unit status"}
+```
+
+Other validation messages: `Request body must be an object`, `unitId is required`, `unitType must be a string`, `workingDir must be a string`, `devices must be an array`, `devices[0] must be an object`, and `devices[0] requires family and index` (the index identifies the affected item).
+
+## 3. Claim work — `POST /api/requests/claim`
+
+The unit must already be registered through a heartbeat. The mutation selects `waiting` requests for `specSlug`, oldest first, changes their status to `possessed`, and records `unitId` and `claimedAt` in the same transaction. Competing workers cannot claim the same request through this endpoint. A successful claim also updates the unit's `lastSeen`.
+
+### Body
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `unitId` | string | Yes | Must not be empty or whitespace-only; identifies a registered unit. |
+| `specSlug` | string | Yes | Must not be empty or whitespace-only; identifies the spec. |
+| `maxCount` | integer | No | From `1` to `100`; defaults to `1` when omitted or `null`. |
+
+Claim selects waiting requests directly by slug. It does not filter by pipeline, unit online status, or spec enabled/archive flags. If no request matches, it returns `[]` rather than `404`.
+
+### Example request
+
+```http
+POST /api/requests/claim HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Content-Type: application/json
+Accept: application/json
+
+{
+  "unitId": "mu-karen",
+  "specSlug": "song-with-cover",
+  "maxCount": 5
+}
+```
+
+### Successful response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+[
+  {
+    "requestId": "<REQUEST_ID>",
+    "payload": { "name": "Demo", "lyrics": "Example lyrics" },
+    "specSlug": "song-with-cover",
+    "pipelineName": "song-with-cover"
+  }
+]
+```
+
+| Field in each item | Meaning |
+| --- | --- |
+| `requestId` | Actual Convex request ID; use it as `id` when reporting. |
+| `payload` | Original request input; may be any JSON value. |
+| `specSlug` | Spec containing the execution configuration. |
+| `pipelineName` | Pipeline to execute within the YAML; do not assume it equals the slug. |
+
+The result may contain fewer than `maxCount` items. The response does not include `status`, `unitId`, or `claimedAt`, although these fields have been saved. With no waiting work:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+[]
+```
+
+### Errors
+
+`401`: shared token error. `400`: invalid JSON/body, missing `unitId` or `specSlug`, invalid `maxCount`, or an unregistered unit. Example of direct validation:
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"error":"maxCount must be an integer from 1 to 100"}
+```
+
+Missing identifiers produce `unitId and specSlug are required`. An unregistered unit causes the mutation to report `Register this unit with a heartbeat before claiming work`; the returned `error` may include Convex error context.
+
+Claim changes stored data: calling it again claims additional waiting requests. If a response is lost after the transaction commits, the API has no idempotency or automatic reclaim mechanism to return the same batch.
+
+## 4. Retrieve configuration — `GET /api/specs/{specSlug}`
+
+Returns the exact YAML string stored in `specs.yaml`, preserving its configuration and formatting.
+
+### Path and example request
+
+`specSlug` is required and must be URL-encoded as one path segment, for example with `encodeURIComponent(specSlug)`. Do not append a trailing `/` or extra path segments. The endpoint does not process query parameters or accept a request body.
+
+```http
+GET /api/specs/song-with-cover HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Accept: application/yaml
+```
+
+### Successful response
+
+The following body illustrates stored YAML; the actual response contains the requested spec's YAML.
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/yaml; charset=utf-8
+Content-Disposition: inline; filename="song-with-cover.yaml"
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+pipeline:
+  song-with-cover:
+    params:
+      name: { type: string }
+      lyrics: { type: string }
+    nodes:
+      - name: generate-song
+        run:
+          workload: yue2
+      - name: generate-cover
+        run:
+          workload: qwen-image
+```
+
+A pipeline is a DAG. Follow its actual `depends_on` configuration rather than treating node order as mandatory execution order. See [Spec YAML](spec-yaml.md).
+
+The query looks up the slug without excluding archived or disabled specs. An archived spec whose record still exists can be retrieved through this API.
+
+### Errors
+
+`401`: shared token error (JSON). `400`: missing slug, extra path segments, invalid URL encoding, or retrieval errors. `404`: no spec record exists for the slug.
+
+```http
+HTTP/1.1 404 Not Found
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"error":"Spec not found"}
+```
+
+Path errors return `400` with `{"error":"specSlug is required"}` or `{"error":"Invalid specSlug encoding"}` and the same JSON headers above. Check the HTTP status before parsing YAML because error responses are JSON.
+
+## 5. Report execution — `POST /api/requests/report`
+
+Updates overall status and/or per-node state for an existing request. The HTTP field is **`node_states`**; the backend stores it as `requests.nodeStates`.
+
+### Body
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `id` | string | Yes | Convex request ID from claim's `requestId`; must be valid and refer to an existing request. |
+| `status` | string | No | One of the request statuses below; omit to retain the existing value. |
+| `node_states` | object | No | Map of node names to state updates; omit to retain existing states. |
+
+Accepted request statuses:
+
+| Value | Intended meaning |
+| --- | --- |
+| `waiting` | Waiting for a worker to claim it. |
+| `possessed` | Claimed by a worker. |
+| `processing` | Execution in progress. |
+| `process_failed` | Execution failed. |
+| `artifact_available` | An artifact is available for retrieval. |
+| `retrieve_artifact_failed` | Artifact retrieval failed. |
+| `succeeded` | Completed successfully. |
+
+The router validates status values but does not enforce a transition order. A report containing only a valid `id` is accepted. Reports do not update the unit heartbeat.
+
+Each `node_states[<nodeName>]` entry accepts:
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `status` | string | When creating a new state | `queue`, `running`, `failed`, or `succeeded`; omit for an existing state to retain its status. |
+| `device` | object | No | Requires `family` (string) and `index` (number). |
+| `artifacts` | object | No | String-to-string map, such as output name → path or URL. |
+| `logs` | string[] | No | New log lines to append. |
+
+Use YAML node names so the desktop can display states correctly; the API does not validate names against the DAG. Unreported nodes retain their states. For reported nodes, omitted fields retain existing values; supplied `device` and `artifacts` replace those fields entirely, while `logs` are **appended**. Do not use `null` to clear fields. Reporting only stores artifact string metadata; it does not upload or download artifacts.
+
+### Example request: progress and node state
+
+```http
+POST /api/requests/report HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Content-Type: application/json
+Accept: application/json
+
+{
+  "id": "<REQUEST_ID>",
+  "status": "processing",
+  "node_states": {
+    "generate-song": {
+      "status": "running",
+      "device": { "family": "cuda", "index": 0 },
+      "artifacts": { "output": "/worker/output/song.wav" },
+      "logs": ["Started"]
+    },
+    "generate-cover": {
+      "status": "queue"
+    }
+  }
+}
+```
+
+### Successful response
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"ok":true}
+```
+
+### Example request: completing existing nodes
+
+```http
+POST /api/requests/report HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Content-Type: application/json
+Accept: application/json
+
+{
+  "id": "<REQUEST_ID>",
+  "status": "succeeded",
+  "node_states": {
+    "generate-song": {
+      "status": "succeeded",
+      "logs": ["Finished"]
+    },
+    "generate-cover": {
+      "status": "succeeded",
+      "artifacts": { "output": "/worker/output/cover.png" }
+    }
+  }
+}
+```
+
+The response is again `200` with the same headers and `{"ok":true}` shown above. After both reports, `generate-song` has logs `["Started", "Finished"]`; its device and artifacts remain unchanged. For an existing node, you may send only `logs` to append lines without changing its status.
+
+### Errors
+
+`401`: shared token error. `400`: invalid JSON/body, invalid or nonexistent request ID, invalid status, malformed node state, or missing status for a new state. The current handler does not return a separate `404` for nonexistent requests.
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"error":"Node \"generate-song\" has an invalid status"}
+```
+
+Other direct validation errors: `id is required`, `Invalid status: <value>`, `node_states must be an object`, `Node "<name>" has an invalid structure`, `Node "<name>" has an invalid device`, `Node "<name>" has invalid artifacts`, and `Node "<name>" has invalid logs`. The mutation may report `Request not found` or `Node "<name>" requires a status when created`, with Convex context.
+
+Resending a report with the same `logs` appends duplicate lines. Account for this when automatically retrying after a timeout.
+
+## 6. Send a notification — `POST /api/notifications/send`
+
+Creates a notification delivered to the desktop through its Convex subscription. New notifications use an in-app toast while the window is visible and focused; when unfocused, the app uses system notifications if permission has been granted. The Notifications page shows the newest 100 active notifications and supports marking them read or dismissing them.
+
+### Body
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `title` | string | Yes | Must not be empty or whitespace-only. |
+| `message` | string | Yes | Must not be empty or whitespace-only. |
+| `tags` | string[] | No | May be omitted or `[]`; must not be `null`. |
+
+`title` and `message` are checked with `trim()` but stored as originally supplied. The backend adds `createdAt` using server time.
+
+### Example request
+
+```http
+POST /api/notifications/send HTTP/1.1
+Host: localhost:3211
+Authorization: Bearer <UNIT_TOKEN>
+Content-Type: application/json
+Accept: application/json
+
 {
   "title": "Job complete",
   "message": "The export finished successfully.",
@@ -27,97 +410,119 @@ Create a notification that is delivered reactively to the desktop app. The reque
 }
 ```
 
-Success response (`200`):
+### Successful response
 
-```json
-{"success":true,"notificationId":"<Convex notification ID>"}
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"success":true,"notificationId":"<NOTIFICATION_ID>"}
 ```
 
-An invalid body returns `400` with an `error` string. Missing, invalid, expired, or revoked bearer tokens return `401`. The desktop displays new notifications in-app while focused and uses a system notification while unfocused if the user has granted notification permission. The Notifications page lists the most recent 100 active notifications; users can mark them read or dismiss them.
+`notificationId` is the newly created notification's Convex ID. The response confirms record creation, not that the desktop or OS displayed it. Repeating the call creates another notification; there is no idempotency key.
 
-## `POST /hooks/units/heartbeat`
+### Errors
 
-Register or refresh a unit. `unitId` and `status` (`online` or `offline`) are required. `unitType`, `workingDir`, and `devices` are optional; each device has a `family` and numeric `index`.
+`401`: shared token error. `400`: invalid JSON, a non-object body, missing title/message, or incorrect tags. Example:
 
-```json
-{
-  "unitId": "mu-karen",
-  "status": "online",
-  "unitType": "Karen",
-  "workingDir": "/worker/path",
-  "devices": [
-    {"family": "cuda", "index": 0},
-    {"family": "cuda", "index": 1}
-  ]
-}
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
+
+{"error":"title is required"}
 ```
 
-Response: `{"ok":true}`. The unit record stores `unitId`, `unitType`, `status`, `workingDir`, `devices`, and `lastSeen`.
+Other validation messages: `Request body must be an object`, `message is required`, and `tags must be an array of strings`.
 
-## `POST /hooks/requests/claim`
+## 7. Errors and response handling
 
-Request:
+JSON responses created by worker handlers include:
 
-```json
-{"unitId":"mu-karen","specSlug":"song-with-cover","maxCount":5}
+```http
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
 ```
 
-`unitId` and `specSlug` are required. `maxCount` defaults to 1 and must be an integer from 1 to 100.
+Error bodies use `{ "error": "<message>" }`. GET/POST handlers validate the token before processing the body or path. All token errors use this response:
 
-The Convex mutation uses `by_spec_slug_and_status` and changes selected records from `waiting` to `possessed` atomically before returning, so competing workers cannot claim the same request through this path.
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json; charset=utf-8
+Access-Control-Allow-Origin: *
+Cache-Control: no-store
 
-Response is an array, empty when nothing is waiting:
-
-```json
-[
-  {
-    "requestId": "<Convex request ID>",
-    "payload": {"name": "Demo"},
-    "specSlug": "song-with-cover",
-    "pipelineName": "song-with-cover"
-  }
-]
+{"error":"Unauthorized: provide an active unit token"}
 ```
 
-The claim mutation changes the stored request status to `possessed`.
+| Status | Condition | Recommended handling |
+| --- | --- | --- |
+| `200` | Endpoint completed successfully. | Parse JSON or YAML according to the endpoint and `Content-Type`. |
+| `204` | Successful OPTIONS preflight. | Do not parse a body. |
+| `400` | Invalid JSON/validation or an error caught by the handler. | Inspect `error` and correct the cause before retrying. |
+| `401` | Missing, invalid, expired, or revoked token. | Check the header and token; replace the token if necessary. |
+| `404` | GET spec could not find the slug. | Check the slug; do not parse the response as YAML. |
 
-## `POST /hooks/requests/report`
+Direct validation messages in the examples come from the router. JSON parser and query/mutation errors may vary by runtime or include Convex context; do not treat the complete `error` string as a stable error code. Backend/infrastructure errors outside these examples, such as failures before a `try` block or unregistered paths/methods, may use a different response format.
 
-Example:
+## 8. CORS — `OPTIONS`
 
-```json
-{
-  "id": "<requestId returned by claim>",
-  "status": "processing",
-  "node_states": {
-    "node1": {
-      "status": "running",
-      "device": { "family": "cuda", "index": 0 },
-      "artifacts": {"output": "/path/to/output"},
-      "logs": ["Started"]
-    },
-    "node2": {
-      "status": "running",
-      "device": { "family": "cuda", "index": 0 }
-    }
-  }
-}
+Every worker endpoint in the overview has a corresponding OPTIONS handler. Specs use the `/api/specs/` prefix handler. Preflight requires neither a bearer token nor a body. Example for reporting:
+
+```http
+OPTIONS /api/requests/report HTTP/1.1
+Host: localhost:3211
+Origin: https://worker.example
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: authorization,content-type
 ```
 
-Request statuses: `waiting`, `possessed`, `processing`, `process_failed`, `artifact_available`, `retrieve_artifact_failed`, `succeeded`.
+Response:
 
-Node statuses in `node_states`: `queue`, `running`, `failed`, `succeeded`. A new state entry requires `status`; existing entries may omit it when updating device, artifacts, or logs. Optional `device` requires `family` and numeric `index`. Artifacts are a string-to-string map; logs are strings appended to the node's existing log history.
+```http
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: authorization,content-type
+Access-Control-Allow-Methods: GET,POST,OPTIONS
+```
 
-Success response: `{"ok":true}`.
+There is no response body. The preflight handler does not set `Content-Type` or `Cache-Control`. CORS does not configure cookie credentials or `Access-Control-Expose-Headers`; reading `Content-Disposition` from browser JavaScript would require additional backend configuration to expose that header.
 
-## `GET /hooks/specs/{specSlug}`
+## 9. Quick checks with cURL
 
-Returns the exact stored YAML as `application/yaml; charset=utf-8`.
+Set `CONVEX_SITE_URL` to the HTTP site URL without a trailing slash, and load `UNIT_TOKEN` into the shell environment from the worker's secret configuration. Do not put real tokens in documentation or commit scripts containing them.
 
-- `200`: YAML body.
-- `401`: token missing, invalid, expired, or revoked.
-- `404`: no spec with that slug.
+```sh
+export CONVEX_SITE_URL='http://127.0.0.1:3211'
 
-## CORS and errors
+curl --include --request POST "$CONVEX_SITE_URL/api/units/heartbeat" \
+  --header "Authorization: Bearer $UNIT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"unitId":"mu-karen","status":"online","unitType":"Karen","workingDir":"/worker/path","devices":[{"family":"cuda","index":0}]}'
 
-Worker hook routes answer `OPTIONS` for browser/worker clients. JSON errors have an `error` string and a 4xx status.
+curl --include --request POST "$CONVEX_SITE_URL/api/requests/claim" \
+  --header "Authorization: Bearer $UNIT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"unitId":"mu-karen","specSlug":"song-with-cover","maxCount":1}'
+
+curl --include --request GET "$CONVEX_SITE_URL/api/specs/song-with-cover" \
+  --header "Authorization: Bearer $UNIT_TOKEN" \
+  --header 'Accept: application/yaml'
+
+# Replace <REQUEST_ID> with the actual requestId returned by claim.
+curl --include --request POST "$CONVEX_SITE_URL/api/requests/report" \
+  --header "Authorization: Bearer $UNIT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"id":"<REQUEST_ID>","status":"processing","node_states":{"generate-song":{"status":"running","logs":["Started"]}}}'
+
+curl --include --request POST "$CONVEX_SITE_URL/api/notifications/send" \
+  --header "Authorization: Bearer $UNIT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"title":"Worker ready","message":"mu-karen is ready.","tags":["worker"]}'
+```
+
+`--include` displays the HTTP status and response headers for comparison with the examples. Programs should handle HTTP errors explicitly; by default, cURL does not treat an HTTP `4xx` response as a nonzero exit code.

@@ -28,4 +28,4 @@ A spec is stored as one complete YAML string in Convex; there is no separate spa
 
 Worker hooks are documented in [docs/worker-hooks.md](docs/worker-hooks.md). Units (Workers) use Unit tokens managed from **Settings → Unit tokens** through regular Convex queries and mutations. The token manager stores only token hashes; the generated plaintext is shown once when a token is created. Anyone who can sign in to the Convex deployment can manage these tokens.
 
-The worker hook `POST /hooks/notifications/send` can create a notification for the desktop. See [Worker HTTP hooks](docs/worker-hooks.md) for its request and response contract.
+The worker hook `POST /api/notifications/send` can create a notification for the desktop. See [Worker HTTP hooks](docs/worker-hooks.md) for its request and response contract.

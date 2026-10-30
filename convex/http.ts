@@ -69,14 +69,14 @@ const authorize = async (
   return valid;
 };
 
-http.route({ path: "/hooks/notifications/send", method: "OPTIONS", handler: options });
-http.route({ path: "/hooks/units/heartbeat", method: "OPTIONS", handler: options });
-http.route({ path: "/hooks/requests/claim", method: "OPTIONS", handler: options });
-http.route({ path: "/hooks/requests/report", method: "OPTIONS", handler: options });
-http.route({ pathPrefix: "/hooks/specs/", method: "OPTIONS", handler: options });
+http.route({ path: "/api/notifications/send", method: "OPTIONS", handler: options });
+http.route({ path: "/api/units/heartbeat", method: "OPTIONS", handler: options });
+http.route({ path: "/api/requests/claim", method: "OPTIONS", handler: options });
+http.route({ path: "/api/requests/report", method: "OPTIONS", handler: options });
+http.route({ pathPrefix: "/api/specs/", method: "OPTIONS", handler: options });
 
 http.route({
-  path: "/hooks/notifications/send",
+  path: "/api/notifications/send",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
@@ -143,7 +143,7 @@ http.route({
 });
 
 http.route({
-  path: "/hooks/units/heartbeat",
+  path: "/api/units/heartbeat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
@@ -249,7 +249,7 @@ http.route({
 });
 
 http.route({
-  path: "/hooks/requests/claim",
+  path: "/api/requests/claim",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
@@ -305,7 +305,7 @@ http.route({
 });
 
 http.route({
-  path: "/hooks/requests/report",
+  path: "/api/requests/report",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
@@ -442,7 +442,7 @@ http.route({
 });
 
 http.route({
-  pathPrefix: "/hooks/specs/",
+  pathPrefix: "/api/specs/",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     if (!(await authorize(ctx, request))) {
@@ -453,7 +453,7 @@ http.route({
     }
 
     const pathname = new URL(request.url).pathname;
-    const encodedSlug = pathname.slice("/hooks/specs/".length);
+    const encodedSlug = pathname.slice("/api/specs/".length);
 
     if (!encodedSlug || encodedSlug.includes("/")) {
       return json({ error: "specSlug is required" }, 400);
