@@ -105,6 +105,23 @@ Use **Duplicate request** to prefill a new waiting request from any previous run
 Requests that have left the waiting queue are read-only in this editor; duplicate
 them instead of changing inputs that a worker may already be executing.
 
+### Resetting a failed request
+
+The request action menu offers **Reset request** only for `process_failed` and
+`retrieve_artifact_failed` (legacy `failed` records are also supported). After
+confirmation, `requests.reset` checks authentication and the latest status in one
+transaction. Missing/deleted requests, unavailable specs/pipelines and every
+non-failure status are rejected without changes.
+
+Reset preserves the request ID, original creation time, spec, pipeline and payload;
+it sets status to `waiting` and removes worker assignment, claim time, node states,
+logs and artifact links. It creates no duplicate and preserves the original FIFO
+creation order. The request can be claimed again normally. Previously stored file
+bytes are retained, but upload receipts from earlier runs cannot register files
+after reset. Uploads started after reset work as usual. The HTTP report contract
+is unchanged; resetting a failure requeues it and does not cancel a worker that
+is still reporting.
+
 ### Following request execution
 
 Requests use the available workspace width. Switch between List rows and a responsive Grid of cards; the choice is remembered on this device. Both show status, pipeline, creation time, node progress, and assigned worker. In Grid, an expanded request spans the full row and moves subsequent cards to the next available row; collapsing restores its normal card width. Expand each row independently to inspect only its execution graph and artifacts. The expanded area has no summary header or node-detail/log panel. Processing and possessed requests expand by default and remain open when completed; opening another request never closes existing rows. Worker reports reactively update the graph and progress. Each expanded request has a collapsible Artifacts section. Clicking a node's artifact count opens that section and highlights its files in the shared request list; Clear highlight resets the emphasis. The graph initially focuses on a failed node first, then a running node. Selecting a node keeps focus on that node. The row’s three-dot button opens a menu for editing waiting requests, duplicating, or deleting a request. Deleting does not stop an already running worker.
@@ -124,7 +141,10 @@ the top right opens an overlay on the right; it never opens or closes automatica
 The panel lists all syntax errors/warnings and, when syntax is valid, structural spec
 issues with their field paths. Syntax entries navigate to their line and column;
 navigation waits for validation of the current draft. Escape or Close dismisses the
-panel. Validation banners above the editor are hidden in the YAML tab. Save still
+panel. Validation lists are confined to the YAML Problems panel. Requests and Overview
+do not render the shared validation banner. The YAML tab shows a warning icon
+for an invalid current draft or saved document; saved invalid specs also have a
+warning icon in the sidebar. Draft-only errors do not mark other saved specs. Save still
 validates immediately and remains blocked for invalid drafts.
 
 ### Live request updates and artifact layouts
@@ -230,9 +250,25 @@ followed by hashing/sizing, receipt creation, binary upload and completion:
 
 Generation checks belong on the workload action's `skip_if`, so cached files
 still reach subsequent upload actions. Upload errors fail the node before its
-success report. Upload completion attaches `nodeName`; the following node report
+automatic terminal report. Upload completion attaches `nodeName`; the following node report
 inherits the registered artifact references. A stable ID replaces that file on
 the same request. Send the worker token only to the application API, never to
 native storage upload URLs. See [request artifacts](request-artifacts.md) for
 endpoint contracts and limits. Media examples require MasterFlow context and
 must not be run as routine validation: they download models and use GPU resources.
+
+## Scheduler state in request items
+
+The request badge describes the request, not every node. `possessed` is labeled
+`Queued on worker`; `processing` is `Processing request` and begins with the first
+node dispatch. Node reasons explain dependency/resource/slot waits. A `running`
+node already owns its scheduler reservation, including before_run and uploads.
+Final states follow finally. Blocked nodes are failed with a Blocked label and
+explanation. Request summaries count only nodes in the current pipeline.
+
+For an ended request, stale `queue`/`running` or absent node reports are displayed
+as `Final state not reported`; neither node nor edge appears actively running.
+The desktop does not rewrite those records or assume which nodes failed. Known
+succeeded/failed nodes retain their actual outcomes. Request completion does not
+wait for unrelated requests from the same worker batch. Specs should leave
+lifecycle reporting to Mu and use hooks for business notifications instead.

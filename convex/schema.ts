@@ -41,6 +41,7 @@ export default defineSchema({
   artifactUploads: defineTable({
     requestId: v.id("requests"),
     artifactId: v.string(),
+    resetVersion: v.optional(v.number()),
     owner: v.string(),
     sha256: v.string(),
     size: v.number(),
@@ -52,6 +53,7 @@ export default defineSchema({
   requests: defineTable({
     specSlug: v.string(),
     pipelineName: v.string(),
+    resetVersion: v.optional(v.number()),
     status: v.string(),
     payload: v.any(),
     artifacts: v.optional(v.array(artifact)),
@@ -59,6 +61,7 @@ export default defineSchema({
       v.string(),
       v.object({
         status: v.string(),
+        reason: v.optional(v.string()),
         device: v.optional(v.object({
           family: v.string(),
           index: v.number(),

@@ -29,7 +29,7 @@ function setup() {
       if (id === './_generated/server') return new Proxy({}, { get: () => value => value });
       if (id === './_generated/api') return { internal: refs };
       if (id === './auth') return { auth: { addHttpRoutes() {} } };
-      if (id === './authz') return { requireAuthenticated() {} };
+      if (id === './authz') return { requireAuthenticated(ctx) { if (ctx.authenticated === false) throw new Error('Unauthenticated'); return 'test-user'; } };
       if (id === 'convex/server') return { httpRouter: () => ({ route: r => routes.push(r) }) };
       if (id.startsWith('./')) return load(id.slice(2));
       return require(id);
@@ -363,4 +363,98 @@ test('worker and desktop creation reject archived specs', async () => {
   specs[0].deletedAt = Date.now();
   assert.equal((await http('POST', '/api/requests/create', {specSlug: 'demo', pipelineName: 'main', payload: {}})).status, 400);
   await assert.rejects(load('requests').create.handler(ctx, {specSlug: 'demo', pipelineName: 'main', payload: {}}), /Spec not found/);
+});
+
+
+test('failed requests reset in place, clear runtime state, and can be claimed again', async () => {
+  for (const status of ['process_failed', 'retrieve_artifact_failed', 'failed']) {
+    const {rows,ctx,load,http}=setup();
+    const payload={lyrics:'Keep these inputs',seed:42};
+    rows.push({_id:'retry',_creationTime:123,specSlug:'demo',pipelineName:'main',status,payload,unitId:'old-worker',claimedAt:99,nodeStates:{render:{status:'failed',logs:['old error']}},artifacts:[{id:'old',storageId:'old-file'}]});
+    assert.equal(await load('requests').reset.handler(ctx,{id:'retry'}),'retry');
+    assert.equal(rows.length,1);
+    assert.equal(rows[0]._creationTime,123);
+    assert.deepEqual(rows[0].payload,payload);
+    assert.equal(rows[0].pipelineName,'main');
+    assert.equal(rows[0].specSlug,'demo');
+    assert.equal(rows[0].status,'waiting');
+    for (const field of ['unitId','claimedAt','nodeStates','artifacts']) assert.equal(rows[0][field],undefined,field);
+    assert.equal(rows[0].resetVersion,1);
+    await assert.rejects(load('requests').reset.handler(ctx,{id:'retry'}),/Only failed/);
+    const response=await http('POST','/api/requests/claim',{specSlug:'demo',unitId:'receiver',byStatus:'waiting'});
+    assert.equal(response.status,200);
+    assert.equal((await response.json())[0].requestId,'retry');
+    assert.equal(rows[0].status,'possessed');
+    assert.equal(rows[0].unitId,'receiver');
+    assert.equal(rows[0].nodeStates,undefined);
+  }
+});
+
+test('reset rejects non-failures, deleted/missing requests, unavailable pipelines and unauthenticated callers', async()=>{
+  for(const status of ['waiting','possessed','processing','artifact_available','succeeded','queue','unknown']){
+    const {rows,ctx,load}=setup();
+    rows.push({_id:'run',specSlug:'demo',pipelineName:'main',status,payload:{keep:true}});
+    const before=JSON.stringify(rows);
+    await assert.rejects(load('requests').reset.handler(ctx,{id:'run'}),/Only failed/);
+    assert.equal(JSON.stringify(rows),before);
+  }
+  const {rows,ctx,specs,load}=setup();
+  const reset=()=>load('requests').reset.handler(ctx,{id:'run'});
+  await assert.rejects(reset(),/not found/);
+  rows.push({_id:'run',specSlug:'demo',pipelineName:'main',status:'process_failed',payload:{},deletedAt:1});
+  await assert.rejects(reset(),/not found/);
+  delete rows[0].deletedAt;
+  ctx.authenticated=false;
+  await assert.rejects(reset(),/Unauthenticated/);
+  ctx.authenticated=true;
+  specs[0].deletedAt=1;
+  await assert.rejects(reset(),/spec is no longer/);
+  delete specs[0].deletedAt;
+  rows[0].pipelineName='missing';
+  await assert.rejects(reset(),/pipeline no longer/);
+  assert.equal(rows[0].status,'process_failed');
+});
+
+test('reset invalidates unfinished and completed upload receipts while fresh uploads still work',async()=>{
+  const {rows,uploads,files,ctx,load}=setup();
+  rows.push({_id:'run',specSlug:'demo',pipelineName:'main',status:'process_failed',payload:{}});
+  const bytes=new Uint8Array([1,2,3]);
+  const sha256=Buffer.from(await webcrypto.subtle.digest('SHA-256',bytes)).toString('hex');
+  const start=()=>load('requestArtifacts').startUpload.handler(ctx,{requestId:'run',artifactId:'output',sha256,size:bytes.length});
+  const complete=(uploadId,storageId)=>load('requestArtifacts').completeUpload.handler(ctx,{requestId:'run',uploadId,storageId,name:'output.bin'});
+  const put=id=>files.set(id,{blob:new Blob([bytes]),metadata:{_id:id,_creationTime:Date.now()+1,size:bytes.length,sha256,contentType:'application/octet-stream'}});
+  const completed=await start();
+  put('old-file');
+  await complete(completed.uploadId,'old-file');
+  const unfinished=await start();
+  // Legacy receipts without a version belong to the original (zero) run.
+  delete uploads.find(upload=>upload._id===unfinished.uploadId).resetVersion;
+  await load('requests').reset.handler(ctx,{id:'run'});
+  await assert.rejects(complete(unfinished.uploadId,'late-file'),/Request was reset/);
+  await assert.rejects(complete(completed.uploadId,'old-file'),/Request was reset/);
+  assert.equal(rows[0].artifacts,undefined);
+  assert.ok(files.has('old-file'),'reset must not delete physical files');
+  const fresh=await start();
+  put('fresh-file');
+  await complete(fresh.uploadId,'fresh-file');
+  assert.equal(rows[0].artifacts[0].storageId,'fresh-file');
+  rows[0].status='process_failed';
+  await load('requests').reset.handler(ctx,{id:'run'});
+  assert.equal(rows[0].resetVersion,2);
+  await assert.rejects(complete(fresh.uploadId,'fresh-file'),/Request was reset/);
+});
+
+test('scheduler node reasons are validated, stored and cleared on legacy state transitions', async () => {
+ const {rows,http} = setup();
+ rows.push({_id:'lifecycle',specSlug:'demo',pipelineName:'main',status:'possessed',payload:{}});
+ const report = node => http('POST','/api/requests/report',{id:'lifecycle',node_states:{render:node}});
+ assert.equal((await report({status:'queue',reason:'Waiting for GPU resources'})).status,200);
+ assert.equal(rows[0].nodeStates.render.reason,'Waiting for GPU resources');
+ assert.equal((await report({status:'running',reason:''})).status,200);
+ assert.equal(rows[0].nodeStates.render.reason,'');
+ assert.equal((await report({status:'failed',reason:'upload failed'})).status,200);
+ assert.equal((await report({reason:123})).status,400);
+ assert.equal(rows[0].nodeStates.render.reason,'upload failed');
+ assert.equal((await report({status:'succeeded'})).status,200);
+ assert.equal(rows[0].nodeStates.render.reason,'');
 });

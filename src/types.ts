@@ -4,6 +4,7 @@ export type PipelineNode = Record<string, any> & { name: string };
 
 export type NodeExecutionState = {
   status?: string;
+  reason?: string;
   device?: { family: string; index: number };
   artifacts?: RequestArtifact[];
   logs?: string[];
@@ -29,6 +30,7 @@ export type RequestItem = {
   createdAt: number;
   payload: unknown;
   unitId?: string;
+  resetVersion?: number;
   nodeStates: Record<string, NodeExecutionState>;
   artifacts?: RequestArtifact[];
 };

@@ -6,6 +6,7 @@ import type { PipelineNode, RequestItem } from "../types";
 import { DependencyGraph } from "./DependencyGraph";
 import { DisplayModeSwitch, useDisplayMode } from "../requestPresentation";
 import "../request-presentation.css";
+import { requestExecutionSummary } from "../executionPresentation";
 import { Status } from "./Status";
 import { RequestArtifacts } from "./RequestArtifacts";
 
@@ -20,6 +21,7 @@ type RequestsViewProps = {
   onEditRequest: (request: RequestItem) => void;
   onDuplicateRequest: (request: RequestItem) => void;
   onDeleteRequest: (request: RequestItem) => void;
+  onResetRequest: (request: RequestItem) => void;
 };
 
 function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activeRequest: RequestItem; activeRequestPipelineNodes: PipelineNode[] }) {
@@ -50,6 +52,7 @@ function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activ
               selected={activeNode}
               onSelect={setSelectedNode}
               nodeStates={activeNodes}
+              requestStatus={activeRequest.status}
               artifactCounts={Object.fromEntries(activeNodeNames.map(name => [name, artifactIdsForNode(name).length]))}
               artifactPanelId={artifactPanelId}
               highlightedArtifactNode={artifactFocus?.nodeName}
@@ -65,17 +68,18 @@ function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activ
 </div>;
 }
 
-function RequestActions({ request, open, onToggle, onClose, onEdit, onDuplicate, onDelete }: { request: RequestItem; open: boolean; onToggle: () => void; onClose: () => void; onEdit: () => void; onDuplicate: () => void; onDelete: () => void }) {
+function RequestActions({ request, open, onToggle, onClose, onEdit, onDuplicate, onDelete, onReset }: { request: RequestItem; open: boolean; onToggle: () => void; onClose: () => void; onEdit: () => void; onDuplicate: () => void; onDelete: () => void; onReset: () => void }) {
   return <div className="request-actions-dropdown"><ActionMenu open={open} onOpenChange={next => { if (next !== open) { if (next) onToggle(); else onClose(); } }} label={`Actions for request ${request.title}`}
     trigger={<button className="subtle-button request-manage-button" aria-label={`Actions for request ${request.title}`}>•••</button>}
     actions={[
       { label: "Edit", disabled: request.status !== "waiting", onSelect: onEdit },
       { label: "Duplicate", onSelect: onDuplicate },
+      ...(request.status === "process_failed" || request.status === "retrieve_artifact_failed" ? [{ label: "Reset request", onSelect: onReset }] : []),
       { label: "Delete", danger: true, separator: true, onSelect: onDelete },
     ]} /></div>;
 }
 
-export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineName, requests, pipelineNodes, selectedRequest, onSelectPipeline, onEditRequest, onDuplicateRequest, onDeleteRequest }: RequestsViewProps) {
+export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineName, requests, pipelineNodes, selectedRequest, onSelectPipeline, onEditRequest, onDuplicateRequest, onDeleteRequest, onResetRequest }: RequestsViewProps) {
   const [mode, setMode] = useDisplayMode("mu-masterflow:requests-layout", "list");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -114,19 +118,19 @@ export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineNam
       {filtered.map(request => {
         const open = expanded[request.convexId] ?? (request.status === "processing" || request.status === "possessed");
         const completed = pipelineNodes.filter(node => request.nodeStates[node.name]?.status === "succeeded").length;
-        const active = Object.entries(request.nodeStates).filter(([, state]) => state.status === "running" || state.status === "failed");
+        const summary = requestExecutionSummary(request, pipelineNodes);
         return <article key={request.convexId} className="request-monitor-item" data-status={request.status} data-expanded={open}>
           <div className="request-monitor-header">
             <button className="request-expand-button" aria-expanded={open} aria-controls={`execution-${request.convexId}`} onClick={() => setExpanded(previous => ({ ...previous, [request.convexId]: !open }))}>
               <span className="request-expand-chevron" aria-hidden="true">›</span>
               <span className="request-monitor-title"><b>{request.title}</b><small>{request.pipelineName} · {request.id} · {new Date(request.createdAt).toLocaleString()}</small></span>
               <Status status={request.status} />
-              <span className="request-monitor-progress"><b>{completed} / {pipelineNodes.length} nodes</b><progress value={completed} max={pipelineNodes.length || 1} aria-label="Completed nodes" /><small>{active.length ? active.map(([name, state]) => `${state.status === "failed" ? "Failed" : "Running"}: ${name}`).join(" · ") : request.status === "waiting" ? "Waiting for worker" : request.status === "succeeded" ? "Completed" : "No active nodes"}</small></span>
+              <span className="request-monitor-progress"><b>{completed} / {pipelineNodes.length} nodes</b><progress value={completed} max={pipelineNodes.length || 1} aria-label="Completed nodes" /><small>{summary}</small></span>
               <span className="request-monitor-worker">{request.unitId ?? "Unassigned"}</span>
             </button>
-            <RequestActions request={request} open={actionsId === request.convexId} onToggle={() => setActionsId(current => current === request.convexId ? null : request.convexId)} onClose={() => setActionsId(null)} onEdit={() => { setActionsId(null); onEditRequest(request); }} onDuplicate={() => { setActionsId(null); onDuplicateRequest(request); }} onDelete={() => { setActionsId(null); onDeleteRequest(request); }} />
+            <RequestActions request={request} open={actionsId === request.convexId} onToggle={() => setActionsId(current => current === request.convexId ? null : request.convexId)} onClose={() => setActionsId(null)} onEdit={() => { setActionsId(null); onEditRequest(request); }} onDuplicate={() => { setActionsId(null); onDuplicateRequest(request); }} onDelete={() => { setActionsId(null); onDeleteRequest(request); }} onReset={() => { setActionsId(null); onResetRequest(request); }} />
           </div>
-          <div id={`execution-${request.convexId}`} hidden={!open}>{open && <RequestExecution activeRequest={request} activeRequestPipelineNodes={pipelineNodes} />}</div>
+          <div id={`execution-${request.convexId}`} hidden={!open}>{open && <RequestExecution key={`${request.convexId}:${request.resetVersion ?? 0}`} activeRequest={request} activeRequestPipelineNodes={pipelineNodes} />}</div>
         </article>;
       })}
       {!filtered.length && <div className="empty-editor"><b>{requests.length ? "No requests match your filters" : "No requests yet"}</b><small>{requests.length ? "Try another name or status." : currentPipelineName ? "Use New request above to run this pipeline." : "Save a pipeline in YAML to start creating requests."}</small></div>}

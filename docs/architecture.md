@@ -160,3 +160,19 @@ Radix Popover. Calendar month/year and hour/minute choices use the shared Select
 Apply commits a local `YYYY-MM-DDTHH:mm` value; Cancel/outside dismissal leaves the
 saved draft unchanged, and Clear removes expiration. Minimum date/time checks and
 strict local date parsing prevent invalid values or silent UTC conversion.
+
+### Failed request retry lifecycle
+
+Authenticated `requests.reset` atomically requeues a failed request in place,
+clearing runtime fields and artifact references while preserving ID and inputs.
+The optional numeric `requests.resetVersion` increments each reset; the optional
+`artifactUploads.resetVersion` captures the request version at upload start.
+Missing versions mean zero for existing documents. Completion rejects receipts
+whose version differs from the request, including previously completed receipts,
+so old uploads cannot repopulate a cleared artifact list. Reset never deletes
+physical storage files. No worker HTTP payload shape changes are required.
+
+Node execution reports include optional `reason` (string) for scheduler waits and
+errors. The backend preserves explicit node outcomes independently of request
+status; the desktop marks stale nonterminal nodes as unconfirmed after request
+completion. See [lifecycle reporting](worker-hooks.md#automatic-mu-lifecycle-reporting).

@@ -83,6 +83,9 @@ function App({
     ...spec,
     color: ["violet", "blue", "green", "orange"][index % 4],
   })) as SpecItem[];
+  const invalidSavedSpecSlugs = useMemo(() => new Set((remoteSpecs ?? []).filter(spec => {
+    try { return specIssues(parse(spec.yaml)).length > 0; } catch { return true; }
+  }).map(spec => spec.slug)), [remoteSpecs]);
   const activeSpec = specs.find((spec) => spec.slug === activeSpecSlug) ?? specs[0];
   const remoteRequests = useQuery(api.requests.list, activeSpec ? { specSlug: activeSpec.slug } : "skip");
   const createSpec = useMutation(api.specs.create);
@@ -92,6 +95,7 @@ function App({
   const createRequest = useMutation(api.requests.create);
   const editRequest = useMutation(api.requests.editPayload);
   const removeRequest = useMutation(api.requests.remove);
+  const resetFailedRequest = useMutation(api.requests.reset);
   const connection = useConvexConnectionState();
 
   useEffect(() => {
@@ -148,6 +152,7 @@ function App({
       payload,
       unitId: request.unitId,
       artifacts: request.artifacts,
+      resetVersion: request.resetVersion,
       nodeStates: asObject(request.nodeStates) as RequestItem["nodeStates"],
     };
   });
@@ -171,9 +176,12 @@ function App({
   const activeRequestPipelineNodes: PipelineNode[] = Array.isArray(savedRequestPipeline.nodes)
     ? savedRequestPipeline.nodes.filter((node: unknown): node is PipelineNode => isMapping(node) && typeof node.name === "string") : [];
   const dirty = hasEdits;
-  const issues = specIssues(parsed);
+  const validationError = useMemo(() => {
+    try { return specIssues(parse(yamlDraft || activeSpec?.yaml || starterYaml))[0] ?? ""; }
+    catch (reason) { return reason instanceof Error ? reason.message : "Invalid YAML"; }
+  }, [yamlDraft, activeSpec?.yaml]);
   const draftError = Object.values(editorErrors)[0] ?? "";
-  const editorBlocked = Boolean(draftError || issues.length);
+  const editorBlocked = Boolean(draftError || validationError);
 
   useEffect(() => {
     if (specs.length === 0) {
@@ -316,6 +324,20 @@ function App({
     }
   }
 
+  async function resetRequest(request: RequestItem) {
+    if (request.status !== "process_failed" && request.status !== "retrieve_artifact_failed") return;
+    if (!window.confirm(`Reset “${request.title}” to waiting? Its ID and inputs will stay the same. Worker assignment, node history and artifact links from the previous run will be cleared.`)) return;
+    setError("");
+    try {
+      await resetFailedRequest({ id: request.convexId as never });
+      setRequestEditor(current => current?.requestId === request.convexId ? null : current);
+      setSelectedRequest(request.convexId);
+      notice("Request reset to waiting");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not reset request.");
+    }
+  }
+
   function duplicateRequest(request: RequestItem) {
     if (!savedPipelineNames.includes(request.pipelineName)) { setError("This pipeline no longer exists in the saved spec."); return; }
     setRequestEditor({ mode: "create", pipelineName: request.pipelineName, initialPayload: request.payload, duplicate: true });
@@ -409,6 +431,7 @@ function App({
     <div className={darkMode ? "desktop-shell dark" : "desktop-shell"}>
       <SpecSidebar
         specs={specs}
+        invalidSpecSlugs={invalidSavedSpecSlugs}
         activeSpec={notificationsActive || settingsActive ? undefined : activeSpec}
         connected={connection.isWebSocketConnected}
         dark={darkMode}
@@ -449,7 +472,7 @@ function App({
               spec={activeSpec}
               dirty={dirty}
               saving={saving}
-              error={editorBlocked ? draftError || issues[0] : ""}
+              error={draftError || validationError}
               hasPipeline={Boolean(requestPipelineName)}
               onSave={() => void saveSpec()}
               onNewRequest={openRequestModal}
@@ -457,16 +480,10 @@ function App({
             <SectionTabs
               activeTab={activeTab}
               requestCount={requests.length}
+              hasYamlErrors={editorBlocked}
               onChange={(tab) => { setActiveTab(tab); setSelectedRequest(null); }}
             />
             <div className={activeTab === "spec-yaml" ? "editor-scroll yaml-editor-area" : activeTab === "requests" ? "editor-scroll requests-editor-area" : "editor-scroll overview-editor-area"}>
-              {activeTab !== "spec-yaml" && (draftError || issues.length > 0) && <div className="spec-issues" role="alert">
-                <b>Spec needs attention</b>
-                <ul>{[...Object.values(editorErrors), ...issues].slice(0, 8).map((issue, index) => <li key={index}>{issue}</li>)}</ul>
-                {(issues.length + Object.keys(editorErrors).length > 8) && <p>More issues remain in this spec.</p>}
-                <button className="subtle-button" onClick={() => setActiveTab("spec-yaml")}>Open Spec YAML</button>
-              </div>}
-
               {activeTab === "overview" && <SpecOverview document={parsed} stale={Boolean(draftError)} onOpenYaml={() => setActiveTab("spec-yaml")} />}
               {activeTab === "spec-yaml" && (
                 <Suspense fallback={<div className="yaml-workspace" role="status">Loading YAML editor…</div>}>
@@ -495,6 +512,7 @@ function App({
                   onEditRequest={openEditRequest}
                   onDuplicateRequest={duplicateRequest}
                   onDeleteRequest={deleteRequest}
+                  onResetRequest={resetRequest}
                 />
               )}
             </div>

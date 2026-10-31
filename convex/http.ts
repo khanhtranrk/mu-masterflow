@@ -539,6 +539,9 @@ http.route({
           throw new Error(`Node "${nodeName}" has an invalid status`);
         }
 
+        if (node.reason !== undefined && typeof node.reason !== "string") {
+          throw new Error(`Node "${nodeName}" reason must be a string`);
+        }
         if (node.device !== undefined) {
           if (
             !node.device ||

@@ -323,6 +323,7 @@ Each `node_states[<nodeName>]` entry accepts:
 | `status` | string | When creating a new state | `queue`, `running`, `failed`, or `succeeded`; omit for an existing state to retain its status. |
 | `device` | object | No | Requires `family` (string) and `index` (number). |
 | `artifacts` | artifact[] | No | Same metadata shape as `requests.artifacts[]`; each entry must exactly match a registered artifact on this request, with a matching `nodeName` when assigned. Unique IDs; at most 100 entries. |
+| `reason` | string | No | Scheduler explanation for queue/failure; send an empty string to clear it. A changed status without a reason clears the previous reason. |
 | `logs` | string[] | No | New log lines to append. |
 
 Use YAML node names so the desktop can display states correctly; the API does not validate names against the DAG. Unreported nodes retain their states. For reported nodes, omitted fields retain existing values; supplied `device` and `artifacts` replace those fields entirely, while `logs` are **appended**. Do not use `null` to clear fields. Reports only associate already registered artifact metadata; they do not upload/download files or register storage IDs. `[]` clears node references without deleting files; new nodes inherit matching request artifacts when the field is omitted. Legacy string maps and top-level `artifacts` in a report are rejected. New stored files belong to `requests.artifacts[]`; see [Request artifacts](request-artifacts.md) for the complete upload, download, retry and retention contract.
@@ -750,3 +751,27 @@ Requests can be deleted from the request details with confirmation. Deletion set
 ## 12. Request artifact storage
 
 See [Request artifacts](request-artifacts.md) for the stored array shape, all four HTTP endpoints and exact payloads, authorization, receipt validation, idempotent completion, replacement semantics, download options, size limits, retention and legacy compatibility. Native byte upload goes to the returned Convex upload URL and uses raw bytes without a worker Authorization header; it is the exception to the JSON POST application-hook contract above. Inspection and claim responses include optional `artifacts` metadata, without URLs.
+
+### Automatic Mu lifecycle reporting
+
+Current Mu workers report queued nodes before dispatch with a `reason` such as
+`Waiting for dependencies`, `Waiting for GPU resources`, or `Waiting for execution slot`.
+They reserve capacity before reporting `running` and before any before_run action.
+They report `succeeded`/`failed` only after postcondition/finally/ignore_error handling.
+Blocked dependencies report `failed` with `reason: "Blocked: dependency <name> failed"`.
+These are still the existing four node statuses; `Blocked` is a desktop label,
+not a new API status. Spec lifecycle HTTP reports should be removed to avoid
+competing status updates; business notifications and artifact uploads remain.
+
+Requests remain `possessed` until the first dispatch, then `processing`; terminal
+request status follows that request's own completion rather than the entire batch.
+A zero-node request can go directly to `succeeded`. Abrupt termination or failed
+HTTP reporting can leave incomplete node state. Backend report mutations preserve
+node states unless explicitly updated; they do not infer final results from an
+overall failed request. The desktop labels nonterminal node records on ended
+requests `Final state not reported`, keeping raw records unchanged.
+
+Roll out the backend's optional reason field before the new Mu worker. Existing
+records and old reports without a reason continue to work. Update stored YAML to
+remove manual node lifecycle reports; editing the repository example does not
+modify existing server specs.

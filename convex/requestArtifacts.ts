@@ -42,7 +42,7 @@ async function start(ctx: MutationCtx, args: {
     throw new Error("A request supports at most 100 artifacts");
   }
   const expiresAt = Date.now() + 60 * 60 * 1000;
-  const uploadId = await ctx.db.insert("artifactUploads", { ...args, owner, expiresAt });
+  const uploadId = await ctx.db.insert("artifactUploads", { ...args, owner, expiresAt, resetVersion: request.resetVersion ?? 0 });
   return { uploadId, uploadUrl: await ctx.storage.generateUploadUrl(), expiresAt };
 }
 
@@ -58,6 +58,7 @@ async function complete(ctx: MutationCtx, args: {
   if (!request || request.deletedAt !== undefined) throw new Error("Request not found");
   const upload = await ctx.db.get(args.uploadId);
   if (!upload || upload.owner !== owner || upload.requestId !== args.requestId) throw new Error("Upload does not belong to this caller and request");
+  if ((upload.resetVersion ?? 0) !== (request.resetVersion ?? 0)) throw new Error("Request was reset; start a new upload for the current run.");
   const artifacts = request.artifacts ?? [];
   // Same completed receipt is safe to retry, even after its expiry. Never replay
   // an older receipt over a newer replacement of the same logical artifact.

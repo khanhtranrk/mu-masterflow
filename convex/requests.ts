@@ -28,6 +28,35 @@ export const remove = mutation({
   },
 });
 
+// Requeue the same failed request; the transaction rechecks its latest status.
+export const reset = mutation({
+  args: { id: v.id("requests") },
+  returns: v.id("requests"),
+  handler: async (ctx, { id }) => {
+    await requireAuthenticated(ctx);
+    const request = await ctx.db.get(id);
+    if (!request || request.deletedAt !== undefined) throw new Error("Request not found.");
+    if (request.status !== "process_failed" && request.status !== "retrieve_artifact_failed" && request.status !== "failed") {
+      throw new Error("Only failed requests can be reset.");
+    }
+    const spec = await ctx.db.query("specs").withIndex("by_slug", q => q.eq("slug", request.specSlug)).first();
+    if (!spec || spec.deletedAt !== undefined) throw new Error("The saved spec is no longer available.");
+    const pipeline = parse(spec.yaml)?.pipeline?.[request.pipelineName];
+    if (!pipeline || typeof pipeline !== "object" || Array.isArray(pipeline)) {
+      throw new Error("This pipeline no longer exists in the saved spec.");
+    }
+    await ctx.db.patch(id, {
+      status: "waiting",
+      unitId: undefined,
+      claimedAt: undefined,
+      nodeStates: undefined,
+      artifacts: undefined,
+      resetVersion: (request.resetVersion ?? 0) + 1,
+    });
+    return id;
+  },
+});
+
 export const create = mutation({
   args: {
     specSlug: v.string(),
@@ -141,6 +170,8 @@ export const report = internalMutation({
         ...previous,
         ...incoming,
         status: incoming.status ?? previous?.status!,
+        ...(incoming.reason !== undefined ? { reason: incoming.reason }
+          : incoming.status !== undefined && incoming.status !== previous?.status ? { reason: "" } : {}),
         artifacts: incoming.artifacts ?? previous?.artifacts ?? (request.artifacts ?? []).filter(a => a.nodeName === name),
         logs: [
           ...(previous?.logs ?? []),

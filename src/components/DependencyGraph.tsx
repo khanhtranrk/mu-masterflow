@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useId, useRef } from "react";
 import type { NodeExecutionState, PipelineNode } from "../types";
+import { nodePresentation } from "../executionPresentation";
 import { asObject, layoutGraph, nodeDependencyNames } from "../specUtils";
 
 type DependencyGraphProps = {
@@ -7,6 +8,7 @@ type DependencyGraphProps = {
   selected: string;
   onSelect: (name: string) => void;
   nodeStates?: Record<string, NodeExecutionState>;
+  requestStatus?: string;
   readOnly?: boolean;
   interactive?: boolean;
   artifactCounts?: Record<string, number>;
@@ -15,15 +17,7 @@ type DependencyGraphProps = {
   onShowArtifacts?: (name: string) => void;
 };
 
-const nodeLabels: Record<string, string> = {
-  queue: "Queued",
-  running: "Running",
-  failed: "Failed",
-  succeeded: "Succeeded",
-  not_started: "Not started",
-};
-
-export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnly = false, interactive = !readOnly, artifactCounts, artifactPanelId, highlightedArtifactNode, onShowArtifacts }: DependencyGraphProps) {
+export function DependencyGraph({ nodes, selected, onSelect, nodeStates, requestStatus, readOnly = false, interactive = !readOnly, artifactCounts, artifactPanelId, highlightedArtifactNode, onShowArtifacts }: DependencyGraphProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const arrowId = useId();
   useEffect(() => {
@@ -52,7 +46,7 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
             const x2 = to.x;
             const y2 = to.y + 42;
             const bend = Math.max(35, (x2 - x1) / 2);
-            return <path key={`${dependency}-${String(node.name)}`} d={`M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`} className={nodeStates ? `edge-${nodeStates[String(node.name)]?.status ?? "pending"}` : undefined} markerEnd={`url(#${arrowId})`} />;
+            return <path key={`${dependency}-${String(node.name)}`} d={`M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`} className={nodeStates ? `edge-${nodePresentation(nodeStates[String(node.name)], requestStatus).status}` : undefined} markerEnd={`url(#${arrowId})`} />;
           }))}
         </svg>
         {nodes.map((node, index) => {
@@ -65,13 +59,15 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
             }) : []);
           const runLabel = [...new Set(workloadNames)].join(" → ") || "Action-only node";
           const execution = nodeStates?.[name];
-          const nodeStatus = execution?.status ?? (runtimeView ? "not_started" : "");
+          const presentation = nodePresentation(execution, requestStatus);
+          const nodeStatus = runtimeView ? presentation.status : "";
 
           const artifactCount = artifactCounts?.[name] ?? 0;
           return (
             <Fragment key={`${name}-${index}`}><div
+              title={presentation.reason || undefined}
               data-node={name}
-              aria-label={`${name}${nodeStatus ? `: ${nodeLabels[nodeStatus] ?? nodeStatus}` : ""}`}
+              aria-label={`${name}${nodeStatus ? `: ${presentation.label}` : ""}`}
               aria-pressed={interactive ? name === selected : undefined}
               className={`graph-node ${name === selected ? "selected" : ""} ${nodeStatus ? `execution-${nodeStatus}` : ""} ${interactive ? "" : "read-only"} ${artifactCount && onShowArtifacts ? "has-artifacts" : ""}`}
               style={{ left: position.x, top: position.y }}
@@ -87,7 +83,7 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
             >
               <span className="graph-node-index">{String(index + 1).padStart(2, "0")}</span>
               <b>{name}</b>
-              <small>{runtimeView ? nodeLabels[nodeStatus] ?? "Not reported" : runLabel}</small>
+              <small>{runtimeView ? presentation.label : runLabel}</small>
               <span className="graph-node-meta">
                 {runtimeView && execution?.device
                   ? `${execution.device.family ?? "device"} · ${execution.device.index ?? "?"}`

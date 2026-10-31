@@ -1,7 +1,7 @@
 const labels: Record<string, string> = {
   waiting: "Waiting",
-  possessed: "Possessed",
-  processing: "Processing",
+  possessed: "Queued on worker",
+  processing: "Processing request",
   process_failed: "Process failed",
   artifact_available: "Artifact available",
   retrieve_artifact_failed: "Artifact retrieval failed",

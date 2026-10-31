@@ -30,17 +30,20 @@ export function SpecHeader({ spec, dirty, saving, error, hasPipeline, onSave, on
 export function SectionTabs({
   activeTab,
   requestCount,
+  hasYamlErrors = false,
   onChange,
 }: {
   activeTab: ConfigTab;
   requestCount: number;
+  hasYamlErrors?: boolean;
   onChange: (tab: ConfigTab) => void;
 }) {
   return (
     <nav className="section-tabs" aria-label="Spec sections">
       {tabs.map((tab) => (
-        <button key={tab.id} className={activeTab === tab.id ? "active" : ""} onClick={() => onChange(tab.id)}>
+        <button key={tab.id} title={tab.id === "spec-yaml" && hasYamlErrors ? "Spec has errors. Open YAML and inspect Problems." : undefined} aria-label={tab.id === "spec-yaml" && hasYamlErrors ? "YAML — contains errors" : undefined} className={activeTab === tab.id ? "active" : ""} onClick={() => onChange(tab.id)}>
           {tab.label}
+          {tab.id === "spec-yaml" && hasYamlErrors && <span className="spec-validation-indicator" aria-hidden="true">⚠</span>}
           {tab.id === "requests" && requestCount > 0 && <span className="tab-count">{requestCount}</span>}
         </button>
       ))}

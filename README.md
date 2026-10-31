@@ -56,3 +56,8 @@ Spec upload, save and YAML diagnostics accept sequential action lists in node
 Old `run: {workload, args}` mappings require migration. See
 [spec actions, scheduling and migration](docs/spec-yaml.md#sequential-node-actions-and-workload-scheduling)
 and the media artifact example there.
+
+Request items distinguish worker queue, active node execution and incomplete final
+reports. Mu schedules and reports node lifecycle automatically; node `reason`
+explains waits and dependency blocking. See [request state presentation](docs/spec-yaml.md#scheduler-state-in-request-items)
+and [automatic lifecycle reports](docs/worker-hooks.md#automatic-mu-lifecycle-reporting).

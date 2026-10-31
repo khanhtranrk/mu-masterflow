@@ -4,6 +4,7 @@ import "../sidebar-connection.css";
 
 type SpecSidebarProps = {
   specs: SpecItem[];
+  invalidSpecSlugs?: ReadonlySet<string>;
   activeSpec?: SpecItem;
   connected: boolean;
   appAvailable?: boolean;
@@ -24,6 +25,7 @@ type SpecSidebarProps = {
 
 export function SpecSidebar({
   specs,
+  invalidSpecSlugs,
   activeSpec,
   connected,
   appAvailable = true,
@@ -63,6 +65,7 @@ export function SpecSidebar({
               <button className={`space-item ${selected ? "selected" : ""}`} onClick={() => onOpen(spec)}>
                 <span className={`space-mark ${spec.color}`}>{spec.name.slice(0, 1).toUpperCase()}</span>
                 <span className="space-name">{spec.name}</span>
+                {invalidSpecSlugs?.has(spec.slug) && <span className="spec-validation-indicator sidebar-spec-warning" role="img" aria-label="Saved spec contains errors" title="Saved spec contains errors. Open YAML to inspect Problems.">⚠</span>}
               </button>
               <ActionMenu open={specMenuSlug === spec.slug} onOpenChange={next => { if (next !== (specMenuSlug === spec.slug)) onToggleMenu(spec.slug); }} label={`Actions for ${spec.name}`}
                 trigger={<button className="space-menu-trigger" aria-label={`Actions for ${spec.name}`} title="Spec actions">···</button>}

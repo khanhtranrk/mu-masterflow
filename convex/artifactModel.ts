@@ -9,6 +9,7 @@ export const artifact = v.object({
 export type Artifact = Infer<typeof artifact>;
 export const nodeUpdate = v.object({
   status: v.optional(v.union(v.literal("queue"), v.literal("running"), v.literal("failed"), v.literal("succeeded"))),
+  reason: v.optional(v.string()),
   device: v.optional(v.object({ family: v.string(), index: v.number() })),
   artifacts: v.optional(v.array(artifact)),
   logs: v.optional(v.array(v.string())),
