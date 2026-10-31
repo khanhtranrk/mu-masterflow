@@ -83,3 +83,25 @@ test('workload execution is rejected outside scheduled node phases', () => {
   const invalid = {pipeline: {p: {nodes: [{name: 'n', run: {workload: 'demo'}}]}}};
   assert.ok(specIssues(invalid).some(issue => issue.includes('type: execute_workload')));
 });
+
+test('routines validate calls, cycles, typed params and utility results', () => {
+  const spec = {routines: {inspect: {params: {logs: {type: 'array', default: []}}, actions: [{type: 'inspect_file', target: 'output.json', save_state: 'file'}], returns: '{actions[file]}'}}, entries: {direct_flow: {initialization: [{type: 'execute_routine', routine: 'inspect', save_state: 'result'}]}}};
+  assert.deepEqual(specIssues(spec), []);
+  const invalid = structuredClone(spec);
+  invalid.routines.inspect.actions = [{type: 'execute_routine', routine: 'inspect'}];
+  assert.ok(specIssues(invalid).some(issue => issue.includes('cycle')));
+  invalid.routines.inspect.actions = [{type: 'execute_workload', workload: 'gpu'}];
+  assert.ok(specIssues(invalid).some(issue => issue.includes('only supported')));
+  invalid.routines.inspect.actions = [{type: 'execute_routine', routine: 'missing'}];
+  assert.ok(specIssues(invalid).some(issue => issue.includes('undefined routine')));
+});
+
+test('lifecycle events validate scopes, action restrictions and routine references', () => {
+  const hook = { on: 'node_finished', do: [{ type: 'execute_routine', routine: 'report' }] };
+  const spec = { routines: { report: { actions: [] } }, events: [hook], pipeline: { p: { events: [hook], nodes: [{ name: 'a', events: [hook] }] } } };
+  assert.deepEqual(specIssues(spec), []);
+  for (const events of [null, {}, [{ on: 'unknown', do: [] }], [{ on: 'node_finished' }], [{ on: 'node_finished', do: [{ type: 'execute_workload', workload: 'x' }] }], [{ on: 'node_started', do: [{ type: 'execute_routine', routine: 'missing' }] }]]) {
+    assert.ok(specIssues({ events }).some(issue => issue.startsWith('events')));
+  }
+  assert.ok(specIssues({ pipeline: { p: { nodes: [{ name: 'a', events: [{ on: 'pipeline_finished', do: [] }] }] } } }).some(issue => issue.includes('.events[0].on')));
+});

@@ -3,7 +3,7 @@ import type { PipelineNode } from "./types";
 export const isMapping = (value: unknown): value is Record<string, any> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-const actionTypes = new Set(["execute_command", "execute_workload", "create_dir", "write_json", "send_http_request"]);
+const actionTypes = new Set(["execute_command", "execute_workload", "create_dir", "write_json", "send_http_request", "inspect_file", "execute_routine"]);
 const conditionTypes = new Set(["and", "or", "file_exists", "folder_exists", "path_exists", "exit_code", "action_state", "node_state", "node_status"]);
 
 /** Structural checks for the current Mu format; Mu owns execution semantics. */
@@ -17,11 +17,13 @@ export function specIssues(value: unknown): string[] {
     if (!isMapping(data)) { fail(path, "expected a mapping."); return {}; }
     return data;
   }
+  const routines = mapping(value.routines ?? {}, "routines");
+  const workloads = mapping(value.workloads ?? {}, "workloads");
   function params(data: unknown, path: string) {
     for (const [name, declaration] of Object.entries(mapping(data, path))) {
       const item = mapping(declaration, `${path}.${name}`);
-      if (item.type !== undefined && !["string", "number"].includes(item.type)) fail(`${path}.${name}.type`, "expected string or number.");
-      if ("default" in item && item.type && typeof item.default !== item.type) fail(`${path}.${name}.default`, `expected ${item.type}.`);
+      if (item.type !== undefined && !["string", "number", "array", "object", "boolean"].includes(item.type)) fail(`${path}.${name}.type`, "expected string, number, array, object or boolean.");
+      if ("default" in item && item.type && (item.type === "array" ? !Array.isArray(item.default) : item.type === "object" ? !isMapping(item.default) : typeof item.default !== item.type)) fail(`${path}.${name}.default`, `expected ${item.type}.`);
     }
   }
   function condition(data: unknown, path: string) {
@@ -46,9 +48,9 @@ export function specIssues(value: unknown): string[] {
     if (!Array.isArray(data)) { fail(path, "expected a list of actions; replace run: {workload, args} with a list containing type: execute_workload."); return; }
     data.forEach((raw, i) => {
       const at = `${path}[${i}]`, item = mapping(raw, at);
-      if (!actionTypes.has(item.type)) fail(`${at}.type`, "expected execute_command, execute_workload, create_dir, write_json or send_http_request.");
+      if (!actionTypes.has(item.type)) fail(`${at}.type`, "unknown action type.");
       if ("action" in item || "save_response_to_context" in item) fail(at, "use type and save_state; legacy action fields were removed.");
-      if (item.save_state !== undefined && (!["execute_command", "send_http_request"].includes(item.type) || typeof item.save_state !== "string" || !item.save_state.trim())) fail(`${at}.save_state`, "requires a non-empty name on a command or HTTP action.");
+      if (item.save_state !== undefined && (!["execute_command", "send_http_request", "inspect_file", "execute_routine"].includes(item.type) || typeof item.save_state !== "string" || !item.save_state.trim())) fail(`${at}.save_state`, "requires a non-empty name on a command, HTTP, inspect_file or execute_routine action.");
       if (item.type === "execute_command" && (typeof item.target !== "string" || !item.target.trim())) fail(`${at}.target`, "expected a non-empty executable.");
       if (item.type === "send_http_request" && (typeof item.url !== "string" || !item.url.trim())) fail(`${at}.url`, "expected a non-empty URL.");
       if (["create_dir", "write_json"].includes(item.type) && (typeof item.path !== "string" || !item.path.trim())) fail(`${at}.path`, "expected a non-empty path.");
@@ -68,15 +70,49 @@ export function specIssues(value: unknown): string[] {
         else if (allowWorkload && !Object.prototype.hasOwnProperty.call(workloads, name)) fail(`${at}.workload`, `undefined workload ${name}. Select a declared workload.`);
         if (item.args !== undefined) mapping(item.args, `${at}.args`);
       }
+      if (item.type === "inspect_file" && (typeof item.target !== "string" || !item.target.trim())) fail(`${at}.target`, "expected a non-empty file path.");
+      if (item.type === "execute_routine") {
+        if (typeof item.routine !== "string" || !item.routine.trim() || /[{}]/.test(item.routine)) fail(`${at}.routine`, "expected a literal routine name.");
+        else if (!Object.prototype.hasOwnProperty.call(routines, item.routine)) fail(`${at}.routine`, `undefined routine ${item.routine}.`);
+        if (item.args !== undefined) mapping(item.args, `${at}.args`);
+      }
       checks(item, at);
     });
   }
+  function events(data: unknown, path: string, nodeScope = false) {
+    if (data === undefined) return;
+    if (!Array.isArray(data)) { fail(path, "expected a list of event hooks."); return; }
+    const names = nodeScope ? ["node_started", "node_finished"] : ["node_started", "node_finished", "pipeline_started", "pipeline_finished"];
+    data.forEach((raw, index) => {
+      const at = `${path}[${index}]`, hook = mapping(raw, at);
+      if (!names.includes(hook.on)) fail(`${at}.on`, `expected ${names.join(", ")}.`);
+      actions(hook.do, `${at}.do`);
+    });
+  }
+  events(value.events, "events");
+  for (const [name, raw] of Object.entries(routines)) {
+    const at = `routines.${name}`, item = mapping(raw, at);
+    if (!name.trim()) fail(at, "expected a non-empty routine name.");
+    params(item.params ?? {}, `${at}.params`);
+    actions(item.actions, `${at}.actions`);
+  }
+  const routineVisiting = new Set<string>(), routineVisited = new Set<string>();
+  function visitRoutine(name: string) {
+    if (routineVisiting.has(name)) { fail(`routines.${name}`, "routine call cycle detected."); return; }
+    if (routineVisited.has(name)) return;
+    routineVisiting.add(name);
+    const list = routines[name]?.actions;
+    if (Array.isArray(list)) for (const action of list) {
+      if (isMapping(action) && action.type === "execute_routine" && typeof action.routine === "string" && Object.prototype.hasOwnProperty.call(routines, action.routine)) visitRoutine(action.routine);
+    }
+    routineVisiting.delete(name); routineVisited.add(name);
+  }
+  Object.keys(routines).forEach(visitRoutine);
   for (const [name, raw] of Object.entries(mapping(value.entries ?? {}, "entries"))) {
     const at = `entries.${name}`, entry = mapping(raw, at);
     if (!["direct_flow", "master_flow"].includes(name)) fail(at, "expected direct_flow or master_flow.");
     for (const phase of ["initialization", "finalization"]) actions(entry[phase] ?? [], `${at}.${phase}`);
   }
-  const workloads = mapping(value.workloads ?? {}, "workloads");
   for (const [name, raw] of Object.entries(workloads)) {
     const at = `workloads.${name}`, item = mapping(raw, at);
     params(item.params ?? {}, `${at}.params`);
@@ -90,6 +126,7 @@ export function specIssues(value: unknown): string[] {
     params(item.params ?? {}, `${at}.params`);
     if (item.context !== undefined) mapping(item.context, `${at}.context`);
     actions(item.prepare ?? [], `${at}.prepare`);
+    events(item.events, `${at}.events`);
     if (!Array.isArray(item.nodes ?? [])) { fail(`${at}.nodes`, "expected a list."); continue; }
     const nodes: PipelineNode[] = (item.nodes ?? []).filter(isMapping);
     if (nodes.length !== (item.nodes ?? []).length) fail(`${at}.nodes`, "every node must be a mapping.");
@@ -98,6 +135,7 @@ export function specIssues(value: unknown): string[] {
     nodes.forEach((node, i) => {
       const path = `${at}.nodes[${i}]`;
       checks(node, path);
+      events(node.events, `${path}.events`, true);
       for (const phase of ["before_run", "run", "after_run", "finally"]) actions(node[phase] === undefined ? [] : node[phase], `${path}.${phase}`, phase !== "finally");
       if (node.depends_on !== undefined && (!Array.isArray(node.depends_on) || node.depends_on.some((d: unknown) => typeof d !== "string" || !d))) fail(`${path}.depends_on`, "use a list of node names, e.g. [prepare, generate]; dependency objects/conditions are not supported.");
       else for (const dependency of node.depends_on ?? []) if (!names.includes(dependency)) fail(`${path}.depends_on`, `unknown node ${dependency}.`);

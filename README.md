@@ -8,7 +8,7 @@ Built with **React, Vite, Tauri, and Convex**.
 
 ## What you can do
 
-- Manage YAML pipeline specifications and view their dependency graphs.
+- Manage YAML pipeline specifications, view dependency graphs, inspect reusable routines and configure lifecycle event hooks.
 - Create requests for different pipelines and inspect node-by-node progress.
 - Monitor connected workers, execution states, and notifications.
 - Upload and retrieve request artifacts through Convex File Storage.
