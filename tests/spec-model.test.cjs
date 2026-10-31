@@ -83,3 +83,15 @@ test('workload execution is rejected outside scheduled node phases', () => {
   const invalid = {pipeline: {p: {nodes: [{name: 'n', run: {workload: 'demo'}}]}}};
   assert.ok(specIssues(invalid).some(issue => issue.includes('type: execute_workload')));
 });
+
+test('routines validate calls, cycles, typed params and utility results', () => {
+  const spec = {routines: {inspect: {params: {logs: {type: 'array', default: []}}, actions: [{type: 'inspect_file', target: 'output.json', save_state: 'file'}], returns: '{actions[file]}'}}, entries: {direct_flow: {initialization: [{type: 'execute_routine', routine: 'inspect', save_state: 'result'}]}}};
+  assert.deepEqual(specIssues(spec), []);
+  const invalid = structuredClone(spec);
+  invalid.routines.inspect.actions = [{type: 'execute_routine', routine: 'inspect'}];
+  assert.ok(specIssues(invalid).some(issue => issue.includes('cycle')));
+  invalid.routines.inspect.actions = [{type: 'execute_workload', workload: 'gpu'}];
+  assert.ok(specIssues(invalid).some(issue => issue.includes('only supported')));
+  invalid.routines.inspect.actions = [{type: 'execute_routine', routine: 'missing'}];
+  assert.ok(specIssues(invalid).some(issue => issue.includes('undefined routine')));
+});

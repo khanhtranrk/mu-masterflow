@@ -204,7 +204,7 @@ pipeline:
 name are rejected because placement is decided before execution. Its `args` is
 a mapping of workload parameters, distinct from command/workload argv lists.
 Each call gets its own workload params; pipeline and sibling node params remain
-isolated. `save_state` is supported only by command and HTTP actions.
+isolated. `save_state` is supported by command, HTTP, inspect_file and execute_routine actions.
 `execute_workload` is not supported in node `finally`, pipeline `prepare`, or
 entry initialization/finalization.
 
@@ -274,3 +274,25 @@ The desktop does not rewrite those records or assume which nodes failed. Known
 succeeded/failed nodes retain their actual outcomes. Request completion does not
 wait for unrelated requests from the same worker batch. Specs should leave
 lifecycle reporting to Mu and use hooks for business notifications instead.
+
+## Routines
+
+Overview includes a dedicated Routines section derived from the current valid YAML
+ draft. Select a routine to see its ordered action sequence, params/defaults, returns
+and custom fields. Nested execute_routine actions link to the target routine;
+Called from lists paths of calls throughout entries, pipelines and other routines.
+Empty routines and absent sections have explicit empty states. Edit YAML opens the
+existing full-document editor; there is no separate persisted routine model.
+
+The shared validator accepts execute_routine and inspect_file in action lists,
+checks literal routine references, declaration shapes and call cycles, and rejects
+execute_workload inside routines. Routine params accept string/number/boolean/array/
+object, including typed defaults. Unknown fields remain intact.
+
+Each routine executes sequentially in a copied context with local params/actions;
+optional returns becomes the caller save_state result's output. inspect_file returns
+resolved path, name, integer size and SHA-256. HTTP body and write_json content
+support dynamic mapping keys; Mu rejects unresolved/duplicate rendered keys.
+See the [canonical CLI routine contract](https://github.com/khanhtranrk/mu-cli/blob/main/docs/spec-format/09-routines.md)
+and its examples. Download routines are optional user-defined helpers. Existing
+notification/artifact HTTP endpoints require no changes for routine support.

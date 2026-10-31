@@ -7,3 +7,5 @@
 .overview-graph .graph-viewport{height:clamp(360px,55vh,680px);min-height:360px;max-height:680px}
 .overview-warning{margin:0 0 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .overview-section:last-child{margin-bottom:0}
+
+.routine-sequence{margin:0;padding-left:24px;display:grid;gap:18px}.routine-sequence>li{padding-left:8px;border-left:2px solid var(--accent);overflow-wrap:anywhere}.routine-sequence>li>strong{display:inline-block;margin-bottom:10px}.overview-inspector>code{display:block;margin-bottom:8px}
