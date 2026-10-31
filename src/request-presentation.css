@@ -75,3 +75,22 @@
 .requests-pipeline-tabs>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .requests-pipeline-badge{flex:none;min-width:22px;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;background:var(--soft);color:var(--muted)}
 .requests-pipeline-tabs>button[aria-pressed=true] .requests-pipeline-badge{background:var(--panel);color:var(--accent)}
+
+@keyframes request-processing-glow{
+  0%,100%{box-shadow:0 2px 6px #00000004,0 0 0 1px color-mix(in srgb,var(--request-state-color) 22%,transparent),0 0 10px color-mix(in srgb,var(--request-state-color) 12%,transparent)}
+  50%{box-shadow:0 2px 6px #00000004,0 0 0 1px color-mix(in srgb,var(--request-state-color) 48%,transparent),0 0 18px color-mix(in srgb,var(--request-state-color) 26%,transparent)}
+}
+.request-hub .request-monitor-item[data-status=processing]{animation:request-processing-glow 3s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.request-hub .request-monitor-item[data-status=processing]{animation:none;box-shadow:0 2px 6px #00000004,0 0 0 1px color-mix(in srgb,var(--request-state-color) 32%,transparent),0 0 12px color-mix(in srgb,var(--request-state-color) 16%,transparent)}}
+
+@keyframes request-failed-flash{
+  0%,100%{background-color:transparent}
+  50%{background-color:#df70671f}
+}
+@keyframes request-failed-glow{
+  0%,100%{box-shadow:0 2px 6px #00000004,0 0 0 1px #df706733}
+  50%{box-shadow:0 2px 6px #00000004,0 0 0 2px #df7067a6,0 0 22px #df706759}
+}
+.request-hub .request-monitor-item[data-failed-flash=true]{animation:request-failed-glow 650ms ease-in-out 5}
+.request-hub .request-monitor-item[data-failed-flash=true] .request-monitor-header,.request-hub .request-monitor-item[data-failed-flash=true] .request-expanded{animation:request-failed-flash 650ms ease-in-out 5}
+@media(prefers-reduced-motion:reduce){.request-hub .request-monitor-item[data-failed-flash=true],.request-hub .request-monitor-item[data-failed-flash=true] .request-monitor-header,.request-hub .request-monitor-item[data-failed-flash=true] .request-expanded{animation:none}}

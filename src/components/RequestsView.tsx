@@ -1,7 +1,7 @@
 import { Input } from "./ui/Input";
 import { SelectField } from "./ui/SelectField";
 import { ActionMenu } from "./ui/ActionMenu";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { PipelineNode, RequestItem } from "../types";
 import { DependencyGraph } from "./DependencyGraph";
 import { DisplayModeSwitch, useDisplayMode } from "../requestPresentation";
@@ -85,13 +85,53 @@ export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineNam
   const [statusFilter, setStatusFilter] = useState("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [actionsId, setActionsId] = useState<string | null>(null);
+  const [failedFlash, setFailedFlash] = useState<Record<string, boolean>>({});
+  const previousStatuses = useRef(new Map<string, string>());
+  const failedFlashTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => {
-    // Automatically reveal active runs once; completion must not collapse inspection.
-    setExpanded(previous => {
-      const active = requests.filter(request => (request.status === "processing" || request.status === "possessed") && previous[request.convexId] === undefined);
-      return active.length ? { ...previous, ...Object.fromEntries(active.map(request => [request.convexId, true])) } : previous;
-    });
+    const changed = requests.filter(request => previousStatuses.current.get(request.convexId) !== request.status);
+    if (changed.length) {
+      setExpanded(previous => {
+        const next = { ...previous };
+        for (const request of changed) {
+          if (request.status === "processing") next[request.convexId] = true;
+          if (request.status === "succeeded" || request.status === "process_failed") next[request.convexId] = false;
+        }
+        return next;
+      });
+      for (const request of changed) {
+        const previousStatus = previousStatuses.current.get(request.convexId);
+        const requestId = request.convexId;
+        const existingTimer = failedFlashTimers.current.get(requestId);
+        if (request.status !== "process_failed") {
+          if (existingTimer) clearTimeout(existingTimer);
+          failedFlashTimers.current.delete(requestId);
+          setFailedFlash(previous => {
+            if (!previous[requestId]) return previous;
+            const next = { ...previous };
+            delete next[requestId];
+            return next;
+          });
+          continue;
+        }
+        if (previousStatus === undefined || previousStatus === "process_failed") continue;
+        if (existingTimer) clearTimeout(existingTimer);
+        setFailedFlash(previous => ({ ...previous, [requestId]: true }));
+        failedFlashTimers.current.set(requestId, setTimeout(() => {
+          setFailedFlash(previous => {
+            const next = { ...previous };
+            delete next[requestId];
+            return next;
+          });
+          failedFlashTimers.current.delete(requestId);
+        }, 3250));
+      }
+    }
+    previousStatuses.current = new Map(requests.map(request => [request.convexId, request.status]));
   }, [requests]);
+  useEffect(() => () => {
+    for (const timer of failedFlashTimers.current.values()) clearTimeout(timer);
+  }, []);
   const filtered = requests.filter(request => (statusFilter === "all" || request.status === statusFilter) && `${request.title} ${request.id} ${request.convexId}`.toLowerCase().includes(search.toLowerCase()));
   useEffect(() => {
     if (selectedRequest) setExpanded(previous => ({ ...previous, [selectedRequest]: true }));
@@ -116,10 +156,10 @@ export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineNam
     </div>
     <div className={`request-monitor-list request-layout-${mode}`}>
       {filtered.map(request => {
-        const open = expanded[request.convexId] ?? (request.status === "processing" || request.status === "possessed");
+        const open = expanded[request.convexId] ?? request.status === "processing";
         const completed = pipelineNodes.filter(node => request.nodeStates[node.name]?.status === "succeeded").length;
         const summary = requestExecutionSummary(request, pipelineNodes);
-        return <article key={request.convexId} className="request-monitor-item" data-status={request.status} data-expanded={open}>
+        return <article key={request.convexId} className="request-monitor-item" data-status={request.status} data-expanded={open} data-failed-flash={failedFlash[request.convexId] || undefined}>
           <div className="request-monitor-header">
             <button className="request-expand-button" aria-expanded={open} aria-controls={`execution-${request.convexId}`} onClick={() => setExpanded(previous => ({ ...previous, [request.convexId]: !open }))}>
               <span className="request-expand-chevron" aria-hidden="true">›</span>
