@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useConvexConnectionState, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { parse } from "yaml";
 import { SpecOverview } from "./components/SpecOverview";
 import "./spec-overview.css";
-import { ConfigEditor } from "./components/ConfigEditor";
+const ConfigEditor = lazy(() => import("./components/ConfigEditor").then(module => ({ default: module.ConfigEditor })));
+import "./yaml-editor.css";
 import { RequestsView } from "./components/RequestsView";
 import { NotificationsView } from "./components/NotificationsView";
 import { SettingsView } from "./components/SettingsView";
@@ -458,8 +459,8 @@ function App({
               requestCount={requests.length}
               onChange={(tab) => { setActiveTab(tab); setSelectedRequest(null); }}
             />
-            <div className="editor-scroll">
-              {(draftError || issues.length > 0) && <div className="spec-issues" role="alert">
+            <div className={activeTab === "spec-yaml" ? "editor-scroll yaml-editor-area" : "editor-scroll"}>
+              {activeTab !== "spec-yaml" && (draftError || issues.length > 0) && <div className="spec-issues" role="alert">
                 <b>Spec needs attention</b>
                 <ul>{[...Object.values(editorErrors), ...issues].slice(0, 8).map((issue, index) => <li key={index}>{issue}</li>)}</ul>
                 {(issues.length + Object.keys(editorErrors).length > 8) && <p>More issues remain in this spec.</p>}
@@ -468,13 +469,18 @@ function App({
 
               {activeTab === "overview" && <SpecOverview document={parsed} stale={Boolean(draftError)} dirty={dirty} onOpenYaml={() => setActiveTab("spec-yaml")} />}
               {activeTab === "spec-yaml" && (
+                <Suspense fallback={<div className="yaml-workspace" role="status">Loading YAML editor…</div>}>
                 <ConfigEditor
+                  key={activeSpec._id}
+                  dark={darkMode}
+                  onSave={() => { if (dirty && !saving && !editorBlocked) void saveSpec(); }}
                   title="Complete spec.yaml"
                   description="Edit every spec field directly. Overview reflects this draft. Save changes to apply it to new requests."
                   value={yamlDraft}
                   onChange={changeWholeSpec}
                   placeholder={starterYaml}
                 />
+                </Suspense>
               )}
               {activeTab === "requests" && (
                 <RequestsView

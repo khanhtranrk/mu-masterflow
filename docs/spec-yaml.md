@@ -63,7 +63,7 @@ pipeline fields, including prepare. Existing stored YAML is not auto-migrated.
 ## Current editor behavior
 
 - **Overview** is read-only. It displays the entry lifecycle, a dependency graph per pipeline, complete node configuration, pipeline params/context/prepare, workloads, and custom root fields. Conditions and action groups have distinct accents; nested lists preserve their YAML order. YAML aliases are guarded against recursive rendering.
-- **YAML** edits all configuration. Unknown keys remain in the authoritative document. Save validates the complete draft before updating the spec.
+- **YAML** uses a full-area CodeMirror editor beside the sidebar, with YAML highlighting, line numbers, folding, two-space indentation, undo/redo, search/replace (Ctrl/⌘ F), syntax diagnostics, optional line wrapping, and light/dark themes. Ctrl/⌘ S saves; Escape then Tab moves keyboard focus out of the editor. It edits all configuration. Unknown keys remain in the authoritative document. Save validates the complete draft before updating the spec.
 - YAML syntax errors keep the raw text editable and prevent saving. Overview explicitly labels its last-valid-document fallback.
 - Upload and save check the supported format, unique names, dependency references
   and cycles, action lists, conditions and workload calls. Diagnostics name the
@@ -112,3 +112,14 @@ Requests can be deleted from the request details with confirmation. Deletion set
 ## File artifacts and HTTP actions
 
 File outputs belong to `requests.artifacts[]`, with an optional producing `nodeName`; `nodeStates.<name>.artifacts[]` uses the same metadata shape to reference those registered files; this metadata is runtime data and is not stored in the authoritative spec YAML. Mu HTTP actions support `body_file`, `response_file` and positive `timeout` seconds, while existing JSON `body` and `save_state` remain supported. `body` and `body_file` cannot be combined. See [Request artifacts](request-artifacts.md) for the API flow and the companion Mu executable example.
+
+### YAML problem panel
+
+The YAML tab keeps a fixed editor layout while validating drafts. Syntax diagnostics
+and the Problems count update after 600 ms without typing. The Problems button in
+the top right opens an overlay on the right; it never opens or closes automatically.
+The panel lists all syntax errors/warnings and, when syntax is valid, structural spec
+issues with their field paths. Syntax entries navigate to their line and column;
+navigation waits for validation of the current draft. Escape or Close dismisses the
+panel. Validation banners above the editor are hidden in the YAML tab. Save still
+validates immediately and remains blocked for invalid drafts.
