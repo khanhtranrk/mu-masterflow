@@ -92,3 +92,8 @@ bunx --bun convex run requests:list '{"specSlug":"song-with-cover"}' --push
 - **Worker hook returns `401`:** verify the worker bearer token is active, unexpired, and sent as a bearer token in the `Authorization` header.
 - **Claim returns `[]`:** verify the request is `waiting` and the spec slug matches.
 - **Build cannot write `.vite-temp`:** use `bunx --bun vite build --configLoader runner` or a writable checkout.
+
+
+## File storage operations
+
+Request artifact metadata and upload receipts are additive schema changes; existing requests can omit `artifacts`. Sync the backend before running an updated desktop or Mu artifact spec. Native upload/download URLs use the backend's configured API origin, not necessarily the HTTP site origin: remote workers must reach both. Preserve file-storage volumes/buckets together with database backups. The default Docker volume is `/convex/data`; use the actual deployment storage configuration when designing backups. Unfinished native uploads are not garbage-collected by this application. See [Request artifacts](request-artifacts.md) for retention and bearer URL behavior.

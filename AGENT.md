@@ -34,6 +34,8 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `convex/schema.ts`: Convex tables and indexes.
 - `convex/specs.ts`: spec queries and mutations, YAML retrieval, archive handling.
 - `convex/requests.ts`: request creation/list/update and request/node status validators.
+- `convex/requestArtifacts.ts`: request artifact upload receipts, completion verification, desktop URLs and worker file lookup.
+- `src/components/RequestArtifacts.tsx`: request artifact list, desktop upload and download actions.
 - `convex/units.ts`: unit heartbeat and atomic request claiming.
 - `convex/http.ts`: bearer-authenticated worker HTTP endpoints.
 - `convex/unitTokens.ts`: internal unit-token lookup, creation, updates, revocation, and last-used tracking.
@@ -63,6 +65,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - Request editing in the desktop uses `requests.editPayload`: waiting-only, expected-payload conflict detection, saved-schema type validation, and payload-only patching. Completed/claimed requests can be duplicated into a new waiting request. See [request editing](docs/spec-yaml.md#creating-and-editing-requests).
 - Request creation accepts `specSlug`, `pipelineName`, and `payload`. Workers can create waiting requests through `POST /api/requests/create` without claiming or executing them.
 - `GET /api/requests` inspects requests without modifying them. This endpoint and `POST /api/requests/claim` require `specSlug`, accept `maxCount` (default 1, range 1–100), and combine optional `byPipeline`, `byStatus`, and `byUnitId` filters with AND. Claim accepts a string or string array for pipeline/status (OR within each group, at most 100 combinations), merges indexed candidates oldest-first before the global limit, and remains atomic. GET inspection keeps single-string query parameters. Omitted filters impose no restriction, including status; claim can therefore claim requests in any state. `byStatus` accepts any non-empty string. Claim sets matches to `possessed` and assigns the receiving `unitId`.
+- Stored file artifacts belong to optional `requests.artifacts[]`; completion upserts one logical ID atomically. Worker upload/download routes live under `/api/requests/artifacts/`. Node artifact arrays use the same shared validator and must reference registered request files; legacy maps are rejected; see [request artifacts](docs/request-artifacts.md).
 - Worker reports use `POST /api/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.
 - Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
 - The desktop stores Convex profile names, URLs, remembered account email addresses, and the dark appearance preference in the Tauri app config directory. Profiles include separate client/API and HTTP site URLs; signing out does not remove a profile. The app does not store a Convex admin key or account passwords.
@@ -75,7 +78,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 
 ## Compatibility note
 
-Request node states include optional `device`, `artifacts`, and `logs` per node. Unit documents currently store `unitId`, `unitType`, `status`, `workingDir`, `devices`, and `lastSeen`.
+Request node states include optional `device`, `artifacts`, and `logs` per node. Both node and request `artifacts` use the shared `artifactModel.ts` metadata-array validator; report cannot register arbitrary storage IDs. Unit documents currently store `unitId`, `unitType`, `status`, `workingDir`, `devices`, and `lastSeen`.
 
 ## Working safely
 
@@ -89,3 +92,6 @@ Request node states include optional `device`, `artifacts`, and `logs` per node.
 ## Local environment
 
 `.env.local` is local configuration and must not be committed. This checkout is configured for a self-hosted Convex deployment. Optional `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` values bootstrap the first desktop profile; after that, profiles are managed in the app. See [docs/development.md](docs/development.md).
+
+
+Request file uploads and downloads use request-level `artifacts[]` backed by Convex File Storage. See [Request artifacts](docs/request-artifacts.md) for schema, receipt validation, worker endpoints, desktop behavior, limits, retention and migration compatibility.

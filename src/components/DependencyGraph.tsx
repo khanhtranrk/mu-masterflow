@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { Fragment, useEffect, useId, useRef } from "react";
 import type { NodeExecutionState, PipelineNode } from "../types";
 import { asObject, layoutGraph, nodeDependencyNames } from "../specUtils";
 
@@ -9,6 +9,10 @@ type DependencyGraphProps = {
   nodeStates?: Record<string, NodeExecutionState>;
   readOnly?: boolean;
   interactive?: boolean;
+  artifactCounts?: Record<string, number>;
+  artifactPanelId?: string;
+  highlightedArtifactNode?: string;
+  onShowArtifacts?: (name: string) => void;
 };
 
 const nodeLabels: Record<string, string> = {
@@ -19,7 +23,7 @@ const nodeLabels: Record<string, string> = {
   not_started: "Not started",
 };
 
-export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnly = false, interactive = !readOnly }: DependencyGraphProps) {
+export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnly = false, interactive = !readOnly, artifactCounts, artifactPanelId, highlightedArtifactNode, onShowArtifacts }: DependencyGraphProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const arrowId = useId();
   useEffect(() => {
@@ -60,13 +64,13 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
           const execution = nodeStates?.[name];
           const nodeStatus = execution?.status ?? (runtimeView ? "not_started" : "");
 
+          const artifactCount = artifactCounts?.[name] ?? 0;
           return (
-            <div
-              key={`${name}-${index}`}
+            <Fragment key={`${name}-${index}`}><div
               data-node={name}
               aria-label={`${name}${nodeStatus ? `: ${nodeLabels[nodeStatus] ?? nodeStatus}` : ""}`}
               aria-pressed={interactive ? name === selected : undefined}
-              className={`graph-node ${name === selected ? "selected" : ""} ${nodeStatus ? `execution-${nodeStatus}` : ""} ${interactive ? "" : "read-only"}`}
+              className={`graph-node ${name === selected ? "selected" : ""} ${nodeStatus ? `execution-${nodeStatus}` : ""} ${interactive ? "" : "read-only"} ${artifactCount && onShowArtifacts ? "has-artifacts" : ""}`}
               style={{ left: position.x, top: position.y }}
               onClick={() => interactive && onSelect(name)}
               role={interactive ? "button" : undefined}
@@ -87,6 +91,13 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
                   : runtimeView ? runLabel : nodeDependencyNames(node).length ? `← ${nodeDependencyNames(node).length} dependencies` : "Independent node"}
               </span>
             </div>
+            {artifactCount > 0 && onShowArtifacts && <button type="button" className="graph-artifact-count"
+              style={{ left: position.x + 112, top: position.y + 59 }}
+              aria-label={`Show ${artifactCount} ${artifactCount === 1 ? "artifact" : "artifacts"} from ${name}`} aria-controls={artifactPanelId}
+              aria-pressed={highlightedArtifactNode === name} onClick={() => onShowArtifacts(name)}>
+              {artifactCount} {artifactCount === 1 ? "artifact" : "artifacts"}
+            </button>}
+            </Fragment>
           );
         })}
         {nodes.length === 0 && <div className="graph-empty">No nodes in this pipeline yet.</div>}

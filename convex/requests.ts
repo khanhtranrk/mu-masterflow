@@ -1,3 +1,4 @@
+import { artifact, isArtifactArray, nodeUpdate } from "./artifactModel";
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { parse } from "yaml";
@@ -102,21 +103,7 @@ export const editPayload = mutation({
 export const report = internalMutation({
   args: {
     id: v.id("requests"),
-    nodeStates: v.optional(v.record(
-      v.string(),
-      v.object({
-        status: v.optional(v.string()),
-        device: v.optional(v.object({
-          family: v.string(),
-          index: v.number(),
-        })),
-        artifacts: v.optional(v.record(
-          v.string(),
-          v.string()
-        )),
-        logs: v.optional(v.array(v.string())),
-      }),
-    )),
+    nodeStates: v.optional(v.record(v.string(), nodeUpdate)),
     status: v.optional(requestStatus),
   },
   returns: v.id("requests"),
@@ -138,10 +125,23 @@ export const report = internalMutation({
         throw new Error(`Node "${name}" requires a status when created`);
       }
 
+      if (incoming.artifacts !== undefined) {
+        if (!isArtifactArray(incoming.artifacts)) throw new Error(`Node "${name}" requires an artifact metadata array with unique IDs`);
+        for (const entry of incoming.artifacts) {
+          const registered = request.artifacts?.find(a => a.id === entry.id);
+          if (!registered || canonicalPayload(registered) !== canonicalPayload(entry)) {
+            throw new Error(`Node "${name}" artifact "${entry.id}" must match a registered request artifact`);
+          }
+          if (registered.nodeName !== undefined && registered.nodeName !== name) {
+            throw new Error(`Artifact "${entry.id}" belongs to node "${registered.nodeName}"`);
+          }
+        }
+      }
       nodeStates[name] = {
         ...previous,
         ...incoming,
         status: incoming.status ?? previous?.status!,
+        artifacts: incoming.artifacts ?? previous?.artifacts ?? (request.artifacts ?? []).filter(a => a.nodeName === name),
         logs: [
           ...(previous?.logs ?? []),
           ...(incoming.logs ?? []),
@@ -165,7 +165,7 @@ async function createRequest(
   args: { specSlug: string; pipelineName: string; payload: unknown },
 ) {
   const spec = await ctx.db.query("specs").withIndex("by_slug", q => q.eq("slug", args.specSlug)).first();
-  if (!spec) throw new Error("Spec not found");
+  if (!spec || spec.deletedAt !== undefined) throw new Error("Spec not found");
 
   const document = parse(spec.yaml) as Record<string, any> | null;
 
@@ -199,6 +199,7 @@ export const inspect = internalQuery({
   args: selectionArgs,
   returns: v.array(v.object({
     requestId: v.id("requests"),
+    artifacts: v.optional(v.array(artifact)),
     payload: v.any(),
     specSlug: v.string(),
     pipelineName: v.string(),
@@ -209,6 +210,7 @@ export const inspect = internalQuery({
     const requests = await selectRequests(ctx, args);
     return requests.map(request => ({
       requestId: request._id,
+      ...(request.artifacts !== undefined ? { artifacts: request.artifacts } : {}),
       payload: request.payload,
       specSlug: request.specSlug,
       pipelineName: request.pipelineName,

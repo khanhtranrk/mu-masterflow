@@ -8,6 +8,8 @@ const { webcrypto } = require('node:crypto');
 // Run application handlers with an isolated in-memory database, without a deployment.
 function setup() {
   const rows = [];
+  const uploads = [];
+  const files = new Map();
   const units = [{ _id: 'unit-record', unitId: 'receiver', lastSeen: 1 }];
   const specs = [{ slug: 'demo', yaml: 'pipeline:\n  main:\n    nodes: []\n' }];
   const routes = [];
@@ -36,10 +38,11 @@ function setup() {
     return result;
   }
   const db = {
-    async get(id) { return rows.find(row => row._id === id) ?? null; },
+    async get(id) { return [...rows, ...uploads].find(row => row._id === id) ?? null; },
+    system: { async get(table, id) { assert.equal(table, '_storage'); return files.get(id)?.metadata ?? null; } },
     query(table) {
       let candidates = table === 'units' ? units : table === 'specs'
-        ? specs : rows;
+        ? specs : table === 'artifactUploads' ? uploads : rows;
       return {
         withIndex(index, build) {
           const schema = fs.readFileSync(path.join(__dirname, '../convex/schema.ts'), 'utf8');
@@ -57,19 +60,26 @@ function setup() {
       };
     },
     async insert(table, value) {
-      assert.equal(table, 'requests');
-      const id = `request-${rows.length}`;
-      rows.push({ _id: id, ...value });
+      assert.ok(['requests', 'artifactUploads'].includes(table));
+      const target = table === 'requests' ? rows : uploads;
+      const id = `${table === 'requests' ? 'request' : 'upload'}-${target.length}`;
+      target.push({ _id: id, ...(table === 'artifactUploads' ? { _creationTime: Date.now() } : {}), ...value });
       return id;
     },
     async patch(id, patch) {
-      const row = [...rows, ...units].find(row => row._id === id);
+      const row = [...rows, ...units, ...uploads].find(row => row._id === id);
       assert.ok(row);
       Object.assign(row, patch);
     },
   };
   const ctx = {
     db,
+    storage: {
+      async generateUploadUrl() { return 'https://storage.invalid/upload'; },
+      async getUrl(id) { return files.has(id) ? `https://storage.invalid/${id}` : null; },
+      async get(id) { return files.get(id)?.blob ?? null; },
+      async delete(id) { files.delete(id); },
+    },
     async runQuery(ref, args) {
       if (ref === 'unitTokens.getByHash') return { _id: 'token', lastUsedAt: Date.now() };
       const [module, name] = ref.split('.');
@@ -90,7 +100,7 @@ function setup() {
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }));
   }
-  return { rows, units, specs, http, remove: args => load("requests").remove.handler(ctx, args), list: args => load("requests").list.handler(ctx, args), edit: args => load("requests").editPayload.handler(ctx, args) };
+  return { rows, units, specs, uploads, files, ctx, load, http, remove: args => load("requests").remove.handler(ctx, args), list: args => load("requests").list.handler(ctx, args), edit: args => load("requests").editPayload.handler(ctx, args) };
 }
 
 test('creation only inserts a waiting request and validates input/authentication', async () => {
@@ -237,4 +247,120 @@ test('soft deletion preserves data and excludes deleted requests before selectio
   assert.equal(claimed.status, 200);
   assert.equal(rows[0].status, 'waiting');
   assert.equal(rows[1].status, 'possessed');
+});
+
+
+test('request artifacts verify upload receipts, preserve siblings and serve authenticated bytes', async () => {
+  const { rows, uploads, files, ctx, load, http } = setup();
+  rows.push({ _id: 'run', specSlug: 'demo', pipelineName: 'main', payload: {}, status: 'processing' });
+  const bytes = new Uint8Array([0, 255, 42, 128]);
+  const sha256 = Buffer.from(await webcrypto.subtle.digest('SHA-256', bytes)).toString('hex');
+  const startBody = { requestId: 'run', artifactId: 'render:output', sha256, size: String(bytes.length) };
+  const startRoute = '/api/requests/artifacts/upload-url';
+  const completeRoute = '/api/requests/artifacts/complete';
+  const get = '/api/requests/artifacts/download?requestId=run&artifactId=render%3Aoutput';
+  assert.equal((await http('POST', startRoute, startBody, false)).status, 401);
+  for (const patch of [{ sha256: 'bad' }, { size: -1 }, { size: '4.5' }, { requestId: 'missing' }]) {
+    assert.equal((await http('POST', startRoute, { ...startBody, ...patch })).status, 400);
+  }
+  const receipt = await (await http('POST', startRoute, startBody)).json();
+  assert.equal(receipt.uploadUrl, 'https://storage.invalid/upload');
+  const put = (id, patch = {}) => files.set(id, { blob: new Blob([bytes]), metadata: {
+    _id: id, _creationTime: Date.now() + 1, size: bytes.length, sha256, contentType: 'application/octet-stream', ...patch,
+  } });
+  put('file-1', { sha256: Buffer.from(sha256, 'hex').toString('base64') });
+  const complete = { requestId: 'run', uploadId: receipt.uploadId, storageId: 'file-1', name: 'output.bin', nodeName: 'render' };
+  assert.equal((await http('POST', completeRoute, complete, false)).status, 401);
+  await assert.rejects(load('requestArtifacts').completeFromWorker.handler(ctx, { ...complete, tokenId: 'another-token' }), /caller/);
+  put('bad', { sha256: 'wrong' });
+  assert.equal((await http('POST', completeRoute, { ...complete, storageId: 'bad' })).status, 400);
+  assert.equal((await http('POST', completeRoute, { ...complete, name: '../bad' })).status, 400);
+  assert.equal((await http('POST', completeRoute, complete)).status, 200);
+  assert.equal((await http('POST', completeRoute, complete)).status, 200);
+  assert.equal(rows[0].artifacts.length, 1);
+  assert.equal(rows[0].status, 'processing');
+  assert.equal(rows[0].artifacts[0].size, 4);
+  assert.equal(rows[0].artifacts[0].nodeName, 'render');
+  // First report after upload inherits the completed node-scoped files.
+  assert.equal((await http('POST', '/api/requests/report', { id: 'run', node_states: { render: { status: 'running' } } })).status, 200);
+  assert.deepEqual(rows[0].nodeStates.render.artifacts, [rows[0].artifacts[0]]);
+  assert.equal((await http('GET', get, undefined, false)).status, 401);
+  const download = await http('GET', get);
+  assert.deepEqual(new Uint8Array(await download.arrayBuffer()), bytes);
+  assert.match(download.headers.get('content-disposition'), /attachment/);
+  assert.equal(download.headers.get('cache-control'), 'no-store');
+  const url = await (await http('GET', get.replace('/download?', '/download-url?'))).json();
+  assert.equal(url.url, 'https://storage.invalid/file-1');
+  assert.equal((await (await http('GET', '/api/requests?specSlug=demo')).json())[0].artifacts[0].id, 'render:output');
+  // Another artifact and a replacement never overwrite siblings; stale retries cannot resurrect old files.
+  const second = await (await http('POST', startRoute, { ...startBody, artifactId: 'other' })).json();
+  put('file-2');
+  assert.equal((await http('POST', completeRoute, { ...complete, uploadId: second.uploadId, storageId: 'file-2' })).status, 200);
+  const replacement = await (await http('POST', startRoute, startBody)).json();
+  put('file-3');
+  assert.equal((await http('POST', completeRoute, { ...complete, uploadId: replacement.uploadId, storageId: 'file-3' })).status, 200);
+  assert.equal(rows[0].artifacts.length, 2);
+  assert.ok(files.has('file-2'));
+  assert.ok(!files.has('file-1'));
+  assert.deepEqual(rows[0].nodeStates.render.artifacts, rows[0].artifacts.filter(a => a.nodeName === 'render'));
+  assert.ok(rows[0].nodeStates.render.artifacts.every(a => a.storageId !== 'file-1'));
+  assert.equal((await http('POST', completeRoute, complete)).status, 400);
+  const expired = await (await http('POST', startRoute, { ...startBody, artifactId: 'expired' })).json();
+  uploads.find(row => row._id === expired.uploadId).expiresAt = 0;
+  put('file-4');
+  assert.equal((await http('POST', completeRoute, { ...complete, uploadId: expired.uploadId, storageId: 'file-4' })).status, 400);
+  rows[0].artifacts[0].size = 101 * 1024 * 1024;
+  assert.equal((await http('GET', get)).status, 413);
+  rows[0].deletedAt = Date.now();
+  assert.equal((await http('GET', get)).status, 404);
+  assert.ok(files.has('file-3'));
+  for (const path of [startRoute, completeRoute, '/api/requests/artifacts/download-url', '/api/requests/artifacts/download']) {
+    assert.equal((await http('OPTIONS', path, undefined, false)).status, 204);
+  }
+});
+
+
+test('node artifact reports only reference registered metadata and keep request updates atomic', async () => {
+  const { rows, http, ctx, load, edit, remove } = setup();
+  const artifact = { id: 'audio', name: 'song.wav', nodeName: 'render', storageId: 'file-a', contentType: 'audio/wav', size: 42, createdAt: 1 };
+  rows.push({ _id: 'run', specSlug: 'demo', pipelineName: 'main', payload: {}, status: 'waiting', artifacts: [artifact],
+    nodeStates: { render: { status: 'running', logs: ['started'], artifacts: [artifact] } } });
+  const report = node => http('POST', '/api/requests/report', { id: 'run', node_states: { render: node } });
+  const before = JSON.stringify(rows[0]);
+  for (const artifacts of [{ output: '/worker/song.wav' }, [artifact, artifact], [{ ...artifact, storageId: 'unregistered' }],
+    [{ ...artifact, size: 900 }], [{ ...artifact, id: 'other' }], [{ ...artifact, extra: true }]]) {
+    assert.equal((await report({ artifacts })).status, 400);
+    assert.equal(JSON.stringify(rows[0]), before);
+  }
+  assert.equal((await http('POST', '/api/requests/report', { id: 'run', artifacts: [artifact] })).status, 400);
+  assert.equal((await http('POST', '/api/requests/report', { id: 'run', node_states: { other: { status: 'running', artifacts: [artifact] } } })).status, 400);
+  assert.equal((await http('POST', '/api/requests/report', { id: 'run', node_states: { new: { artifacts: [] } } })).status, 400);
+  await assert.rejects(load('requests').report.handler(ctx, { id: 'run', nodeStates: {render: {artifacts: [{...artifact, size: 900}]}} }), /registered/);
+  assert.equal((await report({ artifacts: [artifact], logs: ['finished'], status: 'succeeded' })).status, 200);
+  assert.deepEqual(rows[0].nodeStates.render.logs, ['started', 'finished']);
+  assert.deepEqual(rows[0].nodeStates.render.artifacts, [artifact]);
+  assert.equal((await report({ logs: ['retained'] })).status, 200);
+  assert.deepEqual(rows[0].nodeStates.render.artifacts, [artifact]);
+  assert.equal((await report({ artifacts: [] })).status, 200);
+  assert.deepEqual(rows[0].nodeStates.render.artifacts, []);
+  assert.deepEqual(rows[0].artifacts, [artifact]);
+  await edit({ id: 'run', payload: {}, expectedPayload: {} });
+  await load('requests').update.handler(ctx, { id: 'run', payload: {}, status: 'processing' });
+  assert.deepEqual(rows[0].artifacts, [artifact]);
+  assert.deepEqual(rows[0].nodeStates.render.artifacts, []);
+  const claimed = await http('POST', '/api/requests/claim', { specSlug: 'demo', unitId: 'receiver' });
+  assert.equal(claimed.status, 200);
+  assert.deepEqual((await claimed.json())[0].artifacts, [artifact]);
+  assert.deepEqual(rows[0].nodeStates.render.artifacts, []);
+  await remove({ id: 'run' });
+  assert.equal((await report({ artifacts: [artifact] })).status, 200);
+  assert.deepEqual(rows[0].artifacts, [artifact]);
+  assert.ok(rows[0].deletedAt);
+});
+
+test('worker and desktop creation reject archived specs', async () => {
+  const { specs, http, ctx, load } = setup();
+  specs[0].deletedAt = Date.now();
+  assert.equal((await http('POST', '/api/requests/create', {specSlug: 'demo', pipelineName: 'main', payload: {}})).status, 400);
+  await assert.rejects(load('requests').create.handler(ctx, {specSlug: 'demo', pipelineName: 'main', payload: {}}), /Spec not found/);
 });

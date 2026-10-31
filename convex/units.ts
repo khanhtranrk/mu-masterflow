@@ -1,3 +1,4 @@
+import { artifact } from "./artifactModel";
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import { requireAuthenticated } from "./authz";
@@ -68,6 +69,7 @@ export const claim = internalMutation({
 
   returns: v.array(v.object({
     requestId: v.id("requests"),
+    artifacts: v.optional(v.array(artifact)),
     payload: v.any(),
     specSlug: v.string(),
     pipelineName: v.string(),
@@ -99,6 +101,7 @@ export const claim = internalMutation({
 
       claimed.push({
         requestId: request._id,
+        ...(request.artifacts !== undefined ? { artifacts: request.artifacts } : {}),
         payload: request.payload,
         specSlug,
         pipelineName: request.pipelineName,

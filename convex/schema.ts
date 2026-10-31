@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { artifact } from "./artifactModel";
 import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
@@ -37,11 +38,23 @@ export default defineSchema({
   }).index("by_slug", ["slug"])
   .index("by_deleted_at", ["deletedAt"]),
 
+  artifactUploads: defineTable({
+    requestId: v.id("requests"),
+    artifactId: v.string(),
+    owner: v.string(),
+    sha256: v.string(),
+    size: v.number(),
+    expiresAt: v.number(),
+    storageId: v.optional(v.id("_storage")),
+  }).index("by_storage", ["storageId"])
+  .index("by_request", ["requestId"]),
+
   requests: defineTable({
     specSlug: v.string(),
     pipelineName: v.string(),
     status: v.string(),
     payload: v.any(),
+    artifacts: v.optional(v.array(artifact)),
     nodeStates: v.optional(v.record(
       v.string(),
       v.object({
@@ -50,10 +63,7 @@ export default defineSchema({
           family: v.string(),
           index: v.number(),
         })),
-        artifacts: v.optional(v.record(
-          v.string(),
-          v.string()
-        )),
+        artifacts: v.optional(v.array(artifact)),
         logs: v.optional(v.array(v.string()))
       }),
     )),

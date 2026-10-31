@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { PipelineNode, RequestItem } from "../types";
 import { DependencyGraph } from "./DependencyGraph";
 import { Status } from "./Status";
+import { RequestArtifacts } from "./RequestArtifacts";
 
 type RequestsViewProps = {
   pipelineNames: string[];
@@ -20,6 +21,20 @@ type RequestsViewProps = {
 function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activeRequest: RequestItem; activeRequestPipelineNodes: PipelineNode[] }) {
   const [selectedNode, setSelectedNode] = useState("");
   const [followExecution, setFollowExecution] = useState(true);
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [artifactFocus, setArtifactFocus] = useState<{ nodeName: string; version: number } | null>(null);
+  const artifactPanelId = useId();
+  function artifactIdsForNode(name: string) {
+    const references = activeRequest.nodeStates[name]?.artifacts ?? (activeRequest.artifacts ?? []).filter(a => a.nodeName === name);
+    const registered = new Set(activeRequest.artifacts?.map(a => a.id));
+    return references.map(a => a.id).filter(id => registered.has(id));
+  }
+  function showNodeArtifacts(name: string) {
+    setSelectedNode(name);
+    setFollowExecution(false);
+    setArtifactsOpen(true);
+    setArtifactFocus(previous => ({ nodeName: name, version: (previous?.version ?? 0) + 1 }));
+  }
   const activeNodes = activeRequest?.nodeStates ?? {};
   const activeNodeNames = activeRequestPipelineNodes.map((node) => String(node.name));
   const runningNames = activeNodeNames.filter(name => activeNodes[name]?.status === "running");
@@ -38,6 +53,10 @@ function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activ
               selected={activeNode}
               onSelect={(name) => { setSelectedNode(name); setFollowExecution(false); }}
               nodeStates={activeNodes}
+              artifactCounts={Object.fromEntries(activeNodeNames.map(name => [name, artifactIdsForNode(name).length]))}
+              artifactPanelId={artifactPanelId}
+              highlightedArtifactNode={artifactFocus?.nodeName}
+              onShowArtifacts={showNodeArtifacts}
               interactive
             />
             {activeNode && (
@@ -49,13 +68,10 @@ function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activ
                 {selectedNodeState?.device && (
                   <p className="request-node-device">Device · {selectedNodeState.device.family} {selectedNodeState.device.index}</p>
                 )}
-                {selectedNodeState?.artifacts && Object.keys(selectedNodeState.artifacts).length > 0 && (
-                  <div className="request-node-section">
-                    <b>Artifacts</b>
-                    {Object.entries(selectedNodeState.artifacts).map(([name, artifact]) => (
-                      <div className="request-artifact" key={name}><small>{name}</small><code>{artifact}</code></div>
-                    ))}
-                  </div>
+                {artifactIdsForNode(activeNode).length > 0 && (
+                  <button className="subtle-button node-artifact-link" aria-controls={artifactPanelId} onClick={() => showNodeArtifacts(activeNode)}>
+                    {artifactIdsForNode(activeNode).length} {artifactIdsForNode(activeNode).length === 1 ? "artifact" : "artifacts"} <span aria-hidden="true">↗</span>
+                  </button>
                 )}
                 {selectedNodeState?.logs && selectedNodeState.logs.length > 0 && (
                   <div className="request-node-section">
@@ -66,6 +82,10 @@ function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activ
                 {!selectedNodeState && <p className="request-node-empty">No runtime state has been reported for this node.</p>}
               </div>
             )}
+            <RequestArtifacts request={activeRequest} open={artifactsOpen} onToggle={() => setArtifactsOpen(value => !value)}
+              panelId={artifactPanelId} highlightedNode={artifactFocus?.nodeName}
+              highlightedIds={artifactFocus ? artifactIdsForNode(artifactFocus.nodeName) : []}
+              focusVersion={artifactFocus?.version ?? 0} onClearHighlight={() => setArtifactFocus(null)} />
           </div>
 
 </div>;

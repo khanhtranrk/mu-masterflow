@@ -53,6 +53,13 @@ export function specIssues(value: unknown): string[] {
       if (item.type === "send_http_request" && (typeof item.url !== "string" || !item.url.trim())) fail(`${at}.url`, "expected a non-empty URL.");
       if (["create_dir", "write_json"].includes(item.type) && (typeof item.path !== "string" || !item.path.trim())) fail(`${at}.path`, "expected a non-empty path.");
       if (item.type === "send_http_request" && item.header !== undefined) mapping(item.header, `${at}.header`);
+      if (item.type === "send_http_request") {
+        if ("body" in item && "body_file" in item) fail(at, "body and body_file are mutually exclusive.");
+        for (const field of ["body_file", "response_file"]) {
+          if (item[field] !== undefined && (typeof item[field] !== "string" || !item[field].trim())) fail(`${at}.${field}`, "expected a non-empty file path.");
+        }
+        if (item.timeout !== undefined && (typeof item.timeout === "string" ? !item.timeout.includes("{") : typeof item.timeout !== "number" || !Number.isFinite(item.timeout) || item.timeout <= 0)) fail(`${at}.timeout`, "expected positive seconds or a template.");
+      }
       if (item.type === "execute_command" && item.args !== undefined && !Array.isArray(item.args)) fail(`${at}.args`, "expected an argv list.");
       checks(item, at);
     });

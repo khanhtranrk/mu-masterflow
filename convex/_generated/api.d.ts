@@ -8,10 +8,12 @@
  * @module
  */
 
+import type * as artifactModel from "../artifactModel.js";
 import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
 import type * as http from "../http.js";
 import type * as notifications from "../notifications.js";
+import type * as requestArtifacts from "../requestArtifacts.js";
 import type * as requestSelection from "../requestSelection.js";
 import type * as requests from "../requests.js";
 import type * as specs from "../specs.js";
@@ -25,10 +27,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  artifactModel: typeof artifactModel;
   auth: typeof auth;
   authz: typeof authz;
   http: typeof http;
   notifications: typeof notifications;
+  requestArtifacts: typeof requestArtifacts;
   requestSelection: typeof requestSelection;
   requests: typeof requests;
   specs: typeof specs;

@@ -151,6 +151,7 @@ function App({
       createdAt: request._creationTime,
       payload,
       unitId: request.unitId,
+      artifacts: request.artifacts,
       nodeStates: asObject(request.nodeStates) as RequestItem["nodeStates"],
     };
   });

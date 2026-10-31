@@ -5,8 +5,19 @@ export type PipelineNode = Record<string, any> & { name: string };
 export type NodeExecutionState = {
   status?: string;
   device?: { family: string; index: number };
-  artifacts?: Record<string, string>;
+  artifacts?: RequestArtifact[];
   logs?: string[];
+};
+
+export type RequestArtifact = {
+  id: string;
+  nodeName?: string;
+  name: string;
+  label?: string;
+  storageId: string;
+  contentType: string;
+  size: number;
+  createdAt: number;
 };
 
 export type RequestItem = {
@@ -19,6 +30,7 @@ export type RequestItem = {
   payload: unknown;
   unitId?: string;
   nodeStates: Record<string, NodeExecutionState>;
+  artifacts?: RequestArtifact[];
 };
 
 export type SpecItem = { _id: string; slug: string; name: string; description: string; yaml: string; color: string };

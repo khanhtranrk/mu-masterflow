@@ -54,6 +54,10 @@ Accept: application/json
 | `POST` | `/api/notifications/send` | Create a desktop notification | `200`, JSON with notification ID |
 | `POST` | `/api/requests/create` | Create a waiting request only | `201`, JSON with request ID |
 | `GET` | `/api/requests` | Inspect matching requests without updating them | `200`, JSON array |
+| `POST` | `/api/requests/artifacts/upload-url` | Start a request-bound upload receipt | `200`, JSON with upload ID, URL and expiry |
+| `POST` | `/api/requests/artifacts/complete` | Verify and upsert one uploaded artifact | `200`, JSON with artifact |
+| `GET` | `/api/requests/artifacts/download-url` | Get a bearer file URL | `200`, JSON with URL and metadata |
+| `GET` | `/api/requests/artifacts/download` | Download bytes with token verification | `200`, file bytes; `413` over 100 MiB |
 | `OPTIONS` | The paths above | CORS preflight | `204`, no body |
 
 Integration flow: register the unit with a heartbeat → claim work → fetch YAML using `specSlug` and select the returned `pipelineName` → execute the DAG → report progress/results. Send additional heartbeats to update presence and notifications as needed. The API does not prescribe a heartbeat or polling interval.
@@ -316,10 +320,10 @@ Each `node_states[<nodeName>]` entry accepts:
 | --- | --- | --- | --- |
 | `status` | string | When creating a new state | `queue`, `running`, `failed`, or `succeeded`; omit for an existing state to retain its status. |
 | `device` | object | No | Requires `family` (string) and `index` (number). |
-| `artifacts` | object | No | String-to-string map, such as output name → path or URL. |
+| `artifacts` | artifact[] | No | Same metadata shape as `requests.artifacts[]`; each entry must exactly match a registered artifact on this request, with a matching `nodeName` when assigned. Unique IDs; at most 100 entries. |
 | `logs` | string[] | No | New log lines to append. |
 
-Use YAML node names so the desktop can display states correctly; the API does not validate names against the DAG. Unreported nodes retain their states. For reported nodes, omitted fields retain existing values; supplied `device` and `artifacts` replace those fields entirely, while `logs` are **appended**. Do not use `null` to clear fields. Reporting only stores artifact string metadata; it does not upload or download artifacts.
+Use YAML node names so the desktop can display states correctly; the API does not validate names against the DAG. Unreported nodes retain their states. For reported nodes, omitted fields retain existing values; supplied `device` and `artifacts` replace those fields entirely, while `logs` are **appended**. Do not use `null` to clear fields. Reports only associate already registered artifact metadata; they do not upload/download files or register storage IDs. `[]` clears node references without deleting files; new nodes inherit matching request artifacts when the field is omitted. Legacy string maps and top-level `artifacts` in a report are rejected. New stored files belong to `requests.artifacts[]`; see [Request artifacts](request-artifacts.md) for the complete upload, download, retry and retention contract.
 
 ### Example request: progress and node state
 
@@ -337,7 +341,7 @@ Accept: application/json
     "generate-song": {
       "status": "running",
       "device": { "family": "cuda", "index": 0 },
-      "artifacts": { "output": "/worker/output/song.wav" },
+      "artifacts": [],
       "logs": ["Started"]
     },
     "generate-cover": {
@@ -360,6 +364,8 @@ Cache-Control: no-store
 
 ### Example request: completing existing nodes
 
+First complete the cover upload for this request using `nodeName: "generate-cover"`. The artifact object below must be the exact metadata returned by completion; the values are illustrative.
+
 ```http
 POST /api/requests/report HTTP/1.1
 Host: localhost:3211
@@ -377,7 +383,15 @@ Accept: application/json
     },
     "generate-cover": {
       "status": "succeeded",
-      "artifacts": { "output": "/worker/output/cover.png" }
+      "artifacts": [{
+        "id": "generate-cover:cover",
+        "nodeName": "generate-cover",
+        "name": "cover.png",
+        "storageId": "<STORAGE_ID_FROM_COMPLETION>",
+        "contentType": "image/png",
+        "size": 524288,
+        "createdAt": 1793422810000
+      }]
     }
   }
 }
@@ -398,7 +412,7 @@ Cache-Control: no-store
 {"error":"Node \"generate-song\" has an invalid status"}
 ```
 
-Other direct validation errors: `id is required`, `Invalid status: <value>`, `node_states must be an object`, `Node "<name>" has an invalid structure`, `Node "<name>" has an invalid device`, `Node "<name>" has invalid artifacts`, and `Node "<name>" has invalid logs`. The mutation may report `Request not found` or `Node "<name>" requires a status when created`, with Convex context.
+Other direct validation errors: `id is required`, `Invalid status: <value>`, `node_states must be an object`, `Node "<name>" has an invalid structure`, `Node "<name>" has an invalid device`, `Node "<name>" requires an artifact metadata array with unique IDs; legacy path maps are no longer accepted`, and `Node "<name>" has invalid logs`. The mutation may report `Request not found` or `Node "<name>" requires a status when created`, with Convex context.
 
 Resending a report with the same `logs` appends duplicate lines. Account for this when automatically retrying after a timeout.
 
@@ -729,3 +743,8 @@ curl --fail http://127.0.0.1:3211/api/health
 ```
 
 Requests can be deleted from the request details with confirmation. Deletion sets optional `requests.deletedAt` (Unix milliseconds) and preserves the record. It leaves the existing `status` unchanged; `deleted` is not a request status. Visibility and claim eligibility depend on `deletedAt`, independently of execution status. Deleted requests are excluded through indexes before list/inspection/claim limits and cannot be edited. Deletion is idempotent and does not cancel an already running worker; its reports remain accepted without clearing `deletedAt`.
+
+
+## 12. Request artifact storage
+
+See [Request artifacts](request-artifacts.md) for the stored array shape, all four HTTP endpoints and exact payloads, authorization, receipt validation, idempotent completion, replacement semantics, download options, size limits, retention and legacy compatibility. Native byte upload goes to the returned Convex upload URL and uses raw bytes without a worker Authorization header; it is the exception to the JSON POST application-hook contract above. Inspection and claim responses include optional `artifacts` metadata, without URLs.

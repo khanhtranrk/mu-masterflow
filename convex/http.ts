@@ -2,6 +2,8 @@ import { httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { auth } from "./auth";
+import { isArtifactArray, type NodeUpdate } from "./artifactModel";
+import type { Id } from "./_generated/dataModel";
 
 function objectBody(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -70,17 +72,17 @@ http.route({ path: "/api/health", method: "OPTIONS", handler: options });
 const authorize = async (
   ctx: ActionCtx,
   request: Request,
-): Promise<boolean> => {
+): Promise<Id<"unitTokens"> | null> => {
   const authorization = request.headers.get("authorization");
 
   if (!authorization?.startsWith("Bearer ")) {
-    return false;
+    return null;
   }
 
   const token = authorization.slice("Bearer ".length);
 
   if (!token) {
-    return false;
+    return null;
   }
 
   const digest = await crypto.subtle.digest(
@@ -116,8 +118,81 @@ const authorize = async (
       usedAt: Date.now(),
     });
   }
-  return valid;
+  return valid && unitToken ? unitToken._id : null;
 };
+
+// Artifact registration is separate from byte upload. Native Convex upload URLs
+// are bearer capabilities; worker tokens are only sent to our own API routes.
+for (const path of ["upload-url", "complete", "download-url", "download"]) {
+  http.route({ path: `/api/requests/artifacts/${path}`, method: "OPTIONS", handler: options });
+}
+for (const operation of ["upload-url", "complete"] as const) {
+  http.route({
+    path: `/api/requests/artifacts/${operation}`, method: "POST",
+    handler: httpAction(async (ctx, request) => {
+      const tokenId = await authorize(ctx, request);
+      if (!tokenId) return json({ error: "Unauthorized: provide an active unit token" }, 401);
+      try {
+        const body = objectBody(await request.json());
+        const requestId = requiredString(body.requestId, "requestId") as Id<"requests">;
+        if (operation === "upload-url") {
+          const artifactId = requiredString(body.artifactId, "artifactId");
+          const sha256 = requiredString(body.sha256, "sha256");
+          // Command action stdout is text; accept canonical decimal byte counts.
+          const size = typeof body.size === "string" && /^(0|[1-9][0-9]*)$/.test(body.size) ? Number(body.size) : body.size;
+          if (typeof size !== "number") throw new Error("size is required and must be a number or decimal byte count");
+          return json(await ctx.runMutation(internal.requestArtifacts.startFromWorker, {
+            requestId, artifactId, sha256, size, tokenId,
+          }));
+        }
+        const uploadId = requiredString(body.uploadId, "uploadId") as Id<"artifactUploads">;
+        const storageId = requiredString(body.storageId, "storageId") as Id<"_storage">;
+        const name = requiredString(body.name, "name");
+        const nodeName = body.nodeName === undefined ? undefined : requiredString(body.nodeName, "nodeName");
+        const label = body.label === undefined ? undefined : requiredString(body.label, "label");
+        const artifact = await ctx.runMutation(internal.requestArtifacts.completeFromWorker, {
+          requestId, uploadId, storageId, name, tokenId,
+          ...(nodeName !== undefined ? { nodeName } : {}),
+          ...(label !== undefined ? { label } : {}),
+        });
+        return json({ artifact });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : "Invalid artifact request" }, 400);
+      }
+    }),
+  });
+}
+for (const operation of ["download-url", "download"] as const) {
+  http.route({
+    path: `/api/requests/artifacts/${operation}`, method: "GET",
+    handler: httpAction(async (ctx, request) => {
+      if (!(await authorize(ctx, request))) return json({ error: "Unauthorized: provide an active unit token" }, 401);
+      try {
+        const params = new URL(request.url).searchParams;
+        const requestId = requiredString(params.get("requestId"), "requestId") as Id<"requests">;
+        const artifactId = requiredString(params.get("artifactId"), "artifactId");
+        const artifact = await ctx.runQuery(internal.requestArtifacts.getForWorker, { requestId, artifactId });
+        if (!artifact) return json({ error: "Artifact not found" }, 404);
+        if (operation === "download-url") {
+          const url = await ctx.storage.getUrl(artifact.storageId);
+          if (!url) return json({ error: "File not found" }, 404);
+          return json({ url, name: artifact.name, contentType: artifact.contentType, size: artifact.size });
+        }
+        if (artifact.size > 100 * 1024 * 1024) return json({ error: "File exceeds 100 MiB; use download-url" }, 413);
+        const blob = await ctx.storage.get(artifact.storageId);
+        if (!blob) return json({ error: "File not found" }, 404);
+        return new Response(blob, { headers: {
+          "content-type": artifact.contentType,
+          "content-disposition": `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(artifact.name).replace(/['()*]/g, c => `%${c.charCodeAt(0).toString(16)}`)}`,
+          "access-control-allow-origin": "*", "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        } });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : "Invalid artifact request" }, 400);
+      }
+    }),
+  });
+}
 
 http.route({ path: "/api/notifications/send", method: "OPTIONS", handler: options });
 http.route({ path: "/api/units/heartbeat", method: "OPTIONS", handler: options });
@@ -399,7 +474,8 @@ http.route({
     }
 
     try {
-      const body = await request.json() as Record<string, any>;
+      const body = objectBody(await request.json());
+      if (body.artifacts !== undefined) throw new Error("Register request artifacts through /api/requests/artifacts/complete");
 
       if (typeof body.id !== "string") {
         throw new Error("id is required");
@@ -417,7 +493,7 @@ http.route({
 
       if (
         body.status !== undefined &&
-        !validStatuses.includes(body.status)
+        !validStatuses.includes(body.status as string)
       ) {
         throw new Error(`Invalid status: ${body.status}`);
       }
@@ -441,7 +517,7 @@ http.route({
       ];
 
       for (const [nodeName, rawNode] of Object.entries(
-        body.node_states ?? {}
+        (body.node_states ?? {}) as Record<string, unknown>
       )) {
         if (
           !rawNode ||
@@ -475,18 +551,8 @@ http.route({
           }
         }
 
-        if (
-          node.artifacts !== undefined &&
-          (
-            !node.artifacts ||
-            typeof node.artifacts !== "object" ||
-            Array.isArray(node.artifacts) ||
-            !Object.values(node.artifacts).every(
-              value => typeof value === "string"
-            )
-          )
-        ) {
-          throw new Error(`Node "${nodeName}" has invalid artifacts`);
+        if (node.artifacts !== undefined && !isArtifactArray(node.artifacts)) {
+          throw new Error(`Node "${nodeName}" requires an artifact metadata array with unique IDs; legacy path maps are no longer accepted`);
         }
 
         if (
@@ -505,10 +571,10 @@ http.route({
         {
           id: body.id as never,
           ...(body.status !== undefined && {
-            status: body.status,
+            status: body.status as "waiting" | "possessed" | "processing" | "process_failed" | "artifact_available" | "retrieve_artifact_failed" | "succeeded",
           }),
           ...(body.node_states !== undefined && {
-            nodeStates: body.node_states,
+            nodeStates: body.node_states as Record<string, NodeUpdate>,
           }),
         }
       );
