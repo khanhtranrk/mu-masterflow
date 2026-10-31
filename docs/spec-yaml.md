@@ -252,7 +252,7 @@ followed by hashing/sizing, receipt creation, binary upload and completion:
 
 Generation checks belong on the workload action's `skip_if`, so cached files
 still reach subsequent upload actions. Upload errors fail the node before its
-automatic terminal report. Upload completion attaches `nodeName`; the following node report
+spec-configured terminal report. Upload completion attaches `nodeName`; the following node report
 inherits the registered artifact references. A stable ID replaces that file on
 the same request. Send the worker token only to the application API, never to
 native storage upload URLs. See [request artifacts](request-artifacts.md) for
@@ -272,8 +272,8 @@ For an ended request, stale `queue`/`running` or absent node reports are display
 as `Final state not reported`; neither node nor edge appears actively running.
 The desktop does not rewrite those records or assume which nodes failed. Known
 succeeded/failed nodes retain their actual outcomes. Request completion does not
-wait for unrelated requests from the same worker batch. Specs should leave
-lifecycle reporting to Mu and use hooks for business notifications instead.
+wait for unrelated requests from the same worker batch. Specs should configure shared lifecycle event hooks for reporting rather than
+repeat report actions in every node.
 
 ## Routines
 
@@ -296,3 +296,19 @@ support dynamic mapping keys; Mu rejects unresolved/duplicate rendered keys.
 See the [canonical CLI routine contract](https://github.com/khanhtranrk/mu-cli/blob/main/docs/spec-format/09-routines.md)
 and its examples. Download routines are optional user-defined helpers. Existing
 notification/artifact HTTP endpoints require no changes for routine support.
+
+## Lifecycle events
+
+Root, pipeline and node `events` lists are validated and preserved by the YAML
+editor. Overview shows root Events separately; pipeline and node inspectors show
+scoped hooks. Each hook has `on` and a `do` action list. Events are node_started,
+node_finished, pipeline_started and pipeline_finished; node scope only accepts
+node events. Hook actions accept the usual utility/routine actions, not
+execute_workload. Root → pipeline → node hooks accumulate in declaration order.
+
+Mu emits neutral lifecycle events; reports to this server are configured in the
+spec using routines/HTTP actions. There is no automatic lifecycle reporter.
+Terminal hooks run after finally/ignore_error, including dependency-blocked nodes;
+pipeline completion is per request. Hook failure warns without changing execution
+results. Upload routines remain explicit node actions when success is required.
+See the [canonical event contract](https://github.com/khanhtranrk/mu-cli/blob/main/docs/spec-format/10-events.md).

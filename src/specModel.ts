@@ -79,6 +79,17 @@ export function specIssues(value: unknown): string[] {
       checks(item, at);
     });
   }
+  function events(data: unknown, path: string, nodeScope = false) {
+    if (data === undefined) return;
+    if (!Array.isArray(data)) { fail(path, "expected a list of event hooks."); return; }
+    const names = nodeScope ? ["node_started", "node_finished"] : ["node_started", "node_finished", "pipeline_started", "pipeline_finished"];
+    data.forEach((raw, index) => {
+      const at = `${path}[${index}]`, hook = mapping(raw, at);
+      if (!names.includes(hook.on)) fail(`${at}.on`, `expected ${names.join(", ")}.`);
+      actions(hook.do, `${at}.do`);
+    });
+  }
+  events(value.events, "events");
   for (const [name, raw] of Object.entries(routines)) {
     const at = `routines.${name}`, item = mapping(raw, at);
     if (!name.trim()) fail(at, "expected a non-empty routine name.");
@@ -115,6 +126,7 @@ export function specIssues(value: unknown): string[] {
     params(item.params ?? {}, `${at}.params`);
     if (item.context !== undefined) mapping(item.context, `${at}.context`);
     actions(item.prepare ?? [], `${at}.prepare`);
+    events(item.events, `${at}.events`);
     if (!Array.isArray(item.nodes ?? [])) { fail(`${at}.nodes`, "expected a list."); continue; }
     const nodes: PipelineNode[] = (item.nodes ?? []).filter(isMapping);
     if (nodes.length !== (item.nodes ?? []).length) fail(`${at}.nodes`, "every node must be a mapping.");
@@ -123,6 +135,7 @@ export function specIssues(value: unknown): string[] {
     nodes.forEach((node, i) => {
       const path = `${at}.nodes[${i}]`;
       checks(node, path);
+      events(node.events, `${path}.events`, true);
       for (const phase of ["before_run", "run", "after_run", "finally"]) actions(node[phase] === undefined ? [] : node[phase], `${path}.${phase}`, phase !== "finally");
       if (node.depends_on !== undefined && (!Array.isArray(node.depends_on) || node.depends_on.some((d: unknown) => typeof d !== "string" || !d))) fail(`${path}.depends_on`, "use a list of node names, e.g. [prepare, generate]; dependency objects/conditions are not supported.");
       else for (const dependency of node.depends_on ?? []) if (!names.includes(dependency)) fail(`${path}.depends_on`, `unknown node ${dependency}.`);

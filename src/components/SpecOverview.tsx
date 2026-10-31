@@ -15,7 +15,7 @@ function Value({ value, depth = 0, ancestors = [] }: { value: unknown; depth?: n
       const complex = item !== null && typeof item === "object";
       const itemType = asObject(item).type;
       const label = Array.isArray(value) ? `${Number(key) + 1}${typeof itemType === "string" ? ` · ${itemType}` : " · item"}` : key;
-      const kind = /condition|skip_if/.test(key) ? "condition" : /^actions$|^run$|before_run|after_run|finally|prepare|initialization|finalization/.test(key) ? "action" : "field";
+      const kind = /condition|skip_if/.test(key) ? "condition" : /^do$|^actions$|^run$|before_run|after_run|finally|prepare|initialization|finalization/.test(key) ? "action" : "field";
       return <div key={key} className={`overview-field overview-${kind}`}>
         {complex ? <details open={depth < 2}><summary>{label}<small>{Array.isArray(item) ? `${item.length} items` : "configuration"}</small></summary><Value value={item} depth={depth + 1} ancestors={[...ancestors, value]} /></details>
           : <><span className="overview-key">{label}</span><Value value={item} depth={depth + 1} /></>}
@@ -47,13 +47,14 @@ export function SpecOverview({ document, stale, onOpenYaml }: { document: Record
   findCalls(document, "spec");
   const workloads = asObject(document.workloads);
   const { nodes: _nodes, ...pipelineFields } = config;
-  const extra = Object.fromEntries(Object.entries(document).filter(([key]) => !["entries", "pipeline", "workloads", "routines"].includes(key)));
+  const extra = Object.fromEntries(Object.entries(document).filter(([key]) => !["entries", "pipeline", "workloads", "routines", "events"].includes(key)));
   return <section className="spec-overview">
     {stale && <p className="overview-warning" role="status">YAML contains an error. Showing the last valid document until it is fixed. <button className="subtle-button" onClick={onOpenYaml}>Edit YAML</button></p>}
     <section className="overview-section"><div className="overview-section-heading"><h3>Entries <span className="overview-count">{Object.keys(asObject(document.entries)).length}</span></h3><p>Initialization → pipeline execution → finalization</p></div>
       <div className="overview-entry-grid">{Object.entries(asObject(document.entries)).map(([entry, value]) => <article className="overview-card" key={entry}><h4>{entry}</h4><Value value={value} /></article>)}</div>
       {!Object.keys(asObject(document.entries)).length && <p className="overview-empty">No entries defined.</p>}
     </section>
+    <section className="overview-section"><div className="overview-section-heading"><h3>Events</h3><p>Lifecycle hooks run in root → pipeline → node order. Failures are warnings.</p><button className="subtle-button" onClick={onOpenYaml}>Edit YAML</button></div><Value value={document.events ?? []} /></section>
     <section className="overview-section"><div className="overview-section-heading"><h3>Pipelines <span className="overview-count">{names.length}</span></h3><p>Arrows represent depends_on. Independent branches can run in parallel.</p></div>
       <div className="overview-pipelines" aria-label="Choose pipeline">{names.map(item => <button className={item === name ? "chosen" : ""} aria-pressed={item === name} key={item} onClick={() => { setSelection(item); setNodeSelection(""); }}><span>{item}</span><span className="overview-count">{Array.isArray(asObject(pipelines[item]).nodes) ? asObject(pipelines[item]).nodes.length : 0}</span></button>)}</div>
       {name ? <><div className="overview-graph-layout"><div className="overview-card overview-graph"><h4>Dependency graph <small>Select a node to inspect</small></h4>{nodes.length ? <DependencyGraph nodes={nodes} selected={selected?.name ?? ""} onSelect={setNodeSelection} /> : <p className="overview-empty">No nodes defined.</p>}</div><aside className="overview-card overview-inspector"><h4>{selected?.name ?? "No node selected"}</h4>{selected && <Value key={`${name}:${selected.name}`} value={selected} />}</aside></div>
