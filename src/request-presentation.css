@@ -11,34 +11,51 @@
 .request-hub .request-monitor-item:is(:hover,:focus-within){background:color-mix(in srgb,var(--panel) 96%,var(--accent));border-color:color-mix(in srgb,var(--line) 55%,var(--accent));box-shadow:0 3px 12px #0000000a}
 .request-hub .request-expand-button:hover{background:transparent}
 .request-hub .request-monitor-item .request-expanded{background:transparent}
-.request-hub .request-monitor-header{border-radius:13px;align-items:flex-start;padding-top:12px}
-.request-hub .request-monitor-header>.request-actions-dropdown{margin-top:6px}
+.request-hub .request-monitor-header{border-radius:13px;align-items:flex-start;padding:4px 12px}
+.request-hub .request-monitor-header>.request-actions-dropdown{margin-top:0}
 .request-hub .request-expand-button{padding:8px 16px 20px;border-radius:12px;align-items:center;min-height:88px}
 .request-monitor-title>b{font-size:15px;font-weight:600;line-height:1.5}
 .request-monitor-title>small{font-size:11px;line-height:1.6}
 .request-monitor-worker{display:block;font-size:11px}
-.request-monitor-progress{width:180px}
-.request-monitor-progress>progress{width:100%;height:4px;accent-color:var(--request-state-color);border:0;border-radius:5px;overflow:hidden;background:var(--line)}
-.request-monitor-progress>progress::-webkit-progress-bar{background:var(--line)}
-.request-monitor-progress>progress::-webkit-progress-value{background:var(--request-state-color)}
+.request-hub .request-monitor-header{align-items:center}
+.request-hub .request-expand-button{min-height:0;padding:0;gap:12px;flex-wrap:nowrap}
+.request-hub .request-monitor-title{display:flex;align-items:center;gap:10px;overflow:hidden}
+.request-hub .request-monitor-title>b{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.request-hub .request-monitor-title>small{display:flex;align-items:center;gap:5px;flex:0 1 auto;min-width:0;overflow:hidden;color:var(--muted);font-size:10px;line-height:1.4;white-space:nowrap}
+.request-hub .request-monitor-title>small>span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--soft)}
+.request-hub .request-monitor-title>small>span:first-child{max-width:130px}
+.request-hub .request-monitor-title>small>span:last-child{max-width:145px}
+.request-monitor-meta{display:flex;align-items:center;justify-content:flex-end;gap:12px;min-width:0;padding:0}
+.request-monitor-nodes{display:flex;align-items:center;gap:7px;min-width:0}
+.request-monitor-node-count{color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.request-monitor-node-dots{display:flex;flex-wrap:wrap;align-items:center;gap:5px;max-width:180px}
+.request-monitor-node-dot{--request-node-color:var(--quiet);position:relative;display:block;width:8px;height:8px;flex:none;border:1px solid color-mix(in srgb,var(--request-node-color) 45%,var(--line));border-radius:50%;background:color-mix(in srgb,var(--request-node-color) 18%,var(--panel));cursor:help;outline:none}
+.request-monitor-node-dot[data-status=queue]{--request-node-color:#c59635}
+.request-monitor-node-dot[data-status=running]{--request-node-color:#9580e6}
+.request-monitor-node-dot[data-status=succeeded]{--request-node-color:#51a36e;background:var(--request-node-color);border-color:var(--request-node-color)}
+.request-monitor-node-dot[data-status=failed]{--request-node-color:#df7067;background:var(--request-node-color);border-color:var(--request-node-color)}
+.request-monitor-node-dot[data-status=unconfirmed]{--request-node-color:#df7067}
+.request-monitor-node-dot::after{position:absolute;z-index:5;left:50%;bottom:calc(100% + 8px);width:max-content;max-width:min(260px,70vw);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);box-shadow:0 3px 12px #0002;color:var(--text);content:attr(data-tooltip);font-size:10px;font-weight:500;line-height:1.4;white-space:normal;overflow-wrap:anywhere;opacity:0;pointer-events:none;transform:translate(-50%,3px);transition:opacity .12s ease,transform .12s ease}
+.request-monitor-node-dot:is(:hover,:focus-visible)::after{opacity:1;transform:translate(-50%,0)}
+.request-monitor-node-dot:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.request-hub .request-monitor-worker{width:auto;max-width:100px}
+@media(prefers-reduced-motion:reduce){.request-monitor-node-dot::after{transition:none}}
 .request-hub .request-monitor-list.request-layout-grid{grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr))}
 .request-layout-grid>.request-monitor-item[data-expanded=true]{grid-column:1 / -1}
-.request-layout-grid .request-monitor-header{padding-right:12px}
-.request-layout-grid .request-expand-button{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:12px;width:100%;min-height:160px}
-.request-layout-grid .request-monitor-title{grid-column:2 / -1}
-.request-layout-grid .request-monitor-header .status-tag{grid-column:2;justify-self:start}
-.request-layout-grid .request-monitor-progress{grid-column:2 / -1;width:100%}
-.request-layout-grid .request-monitor-worker{grid-column:2 / -1;width:auto}
-.request-layout-grid .request-expanded{padding:16px}
+.request-layout-grid .request-monitor-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;padding-right:12px}
+.request-layout-grid .request-expand-button{grid-column:1 / -1;width:100%;min-height:0}
+.request-layout-grid .request-monitor-meta{grid-column:1;justify-content:flex-start;flex-wrap:wrap;padding:4px 0 0 26px;gap:8px}
+.request-layout-grid .request-monitor-node-dots{max-width:160px}
+.request-layout-grid .request-actions-dropdown{grid-column:2;grid-row:2;align-self:center}
+.request-layout-grid .request-expanded{padding:8px}
 .request-layout-grid .request-execution-view .graph-viewport{min-height:260px;max-height:360px}
 .request-expanded{min-width:0;border-radius:0 0 13px 13px;background:var(--soft)}
 .request-expanded .graph-viewport{background-color:var(--panel)}
 .request-layout-grid>.empty-editor{grid-column:1 / -1}
 .request-files-heading{position:relative;border-radius:7px}
-.artifact-layout-toolbar{display:flex;justify-content:flex-end}
 .artifact-items{display:grid;gap:10px;min-width:0}
 .artifact-layout-grid{grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr))}
-.request-file{position:relative;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--soft);padding:14px;gap:12px}
+.request-file{position:relative;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--soft);padding:10px;gap:8px}
 .artifact-layout-grid .request-file{flex-direction:column;align-items:flex-start;justify-content:space-between;min-height:120px}
 .request-file b{font-size:12px;line-height:1.6}
 .request-file small{font-size:10px}
@@ -46,8 +63,8 @@
 .request-file a:hover{border-color:var(--accent)}
 .artifact-items>small{grid-column:1 / -1}
 
-@media(max-width:1100px){.request-layout-list .request-monitor-worker{display:none}.request-layout-list .request-monitor-progress{width:150px}}
-@media(max-width:750px){.request-monitor-header{padding-right:10px}.request-expand-button{gap:10px}.request-layout-list .request-monitor-progress{width:auto;flex:1}.request-files-heading{flex-wrap:wrap}.request-hub .request-monitor-list.request-layout-grid{grid-template-columns:1fr}}
+@media(max-width:1100px){.request-layout-list .request-monitor-worker{display:none}.request-layout-list .request-monitor-node-dots{max-width:140px}}
+@media(max-width:750px){.request-monitor-header{padding:4px 10px}.request-hub .request-expand-button{gap:8px;padding:0}.request-hub .request-monitor-title{gap:6px}.request-hub .request-monitor-title>small{gap:4px}.request-hub .request-monitor-title>small>span:first-child{max-width:84px}.request-hub .request-monitor-title>small>span:last-child{max-width:72px}.request-hub .request-monitor-meta{flex:1 1 100%;justify-content:flex-start;padding:0 0 0 26px;gap:8px}.request-layout-grid .request-monitor-meta{grid-row:2;padding:0 0 0 26px}.request-monitor-node-dots{max-width:min(180px,50vw)}.request-files-heading{flex-wrap:wrap}.request-files-heading-actions{gap:5px}.request-files-heading-actions .display-mode-switch button{padding:5px 7px}.request-hub .request-monitor-list.request-layout-grid{grid-template-columns:1fr}}
 /* Runtime colors and selection stay reactive without motion. */
 .request-expand-chevron{display:inline-block}
 .request-monitor-item[data-expanded=true] .request-expand-chevron{transform:rotate(90deg)}

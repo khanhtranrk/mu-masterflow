@@ -6,7 +6,7 @@ import type { PipelineNode, RequestItem } from "../types";
 import { DependencyGraph } from "./DependencyGraph";
 import { DisplayModeSwitch, useDisplayMode } from "../requestPresentation";
 import "../request-presentation.css";
-import { requestExecutionSummary } from "../executionPresentation";
+import { nodePresentation } from "../executionPresentation";
 import { Status } from "./Status";
 import { RequestArtifacts } from "./RequestArtifacts";
 
@@ -169,16 +169,35 @@ export function RequestsView({ specSlug, pipelineNames, pipelineCounts, currentP
       </div> : filtered.map(request => {
         const open = expanded[request.convexId] ?? request.status === "processing";
         const completed = pipelineNodes.filter(node => request.nodeStates[node.name]?.status === "succeeded").length;
-        const summary = requestExecutionSummary(request, pipelineNodes);
+        const createdAt = new Date(request.createdAt).toLocaleString();
         return <article key={request.convexId} className="request-monitor-item" data-status={request.status} data-expanded={open} data-failed-flash={failedFlash[request.convexId] || undefined}>
           <div className="request-monitor-header">
-            <button className="request-expand-button" aria-expanded={open} aria-controls={`execution-${request.convexId}`} onClick={() => setExpanded(previous => ({ ...previous, [request.convexId]: !open }))}>
+            <button className="request-expand-button" aria-label={`${open ? "Collapse" : "Expand"} ${request.title}`} aria-expanded={open} aria-controls={`execution-${request.convexId}`} onClick={() => setExpanded(previous => ({ ...previous, [request.convexId]: !open }))}>
               <span className="request-expand-chevron" aria-hidden="true">›</span>
-              <span className="request-monitor-title"><b>{request.title}</b><small>{request.pipelineName} · {request.id} · {new Date(request.createdAt).toLocaleString()}</small></span>
-              <Status status={request.status} />
-              <span className="request-monitor-progress"><b>{completed} / {pipelineNodes.length} nodes</b><progress value={completed} max={pipelineNodes.length || 1} aria-label="Completed nodes" /><small>{summary}</small></span>
-              <span className="request-monitor-worker">{request.unitId ?? "Unassigned"}</span>
+              <span className="request-monitor-title">
+                <b title={request.title}>{request.title}</b>
+                <small>
+                  <span title={`Pipeline: ${request.pipelineName}`}>{request.pipelineName}</span>
+                  <span>{request.id}</span>
+                  <span title={createdAt}>{createdAt}</span>
+                </small>
+              </span>
             </button>
+            <div className="request-monitor-meta">
+              <Status status={request.status} />
+              <div className="request-monitor-nodes" aria-label={`${completed} of ${pipelineNodes.length} nodes succeeded`}>
+                <span className="request-monitor-node-count">{completed}/{pipelineNodes.length}</span>
+                <span className="request-monitor-node-dots">
+                  {pipelineNodes.map(node => {
+                    const presentation = nodePresentation(request.nodeStates[node.name], request.status);
+                    const reason = presentation.reason && presentation.reason !== presentation.label ? `: ${presentation.reason}` : "";
+                    const label = `${node.name} — ${presentation.label}${reason}`;
+                    return <span key={node.name} className="request-monitor-node-dot" data-status={presentation.status} data-tooltip={label} title={label} aria-label={label} role="img" tabIndex={0} />;
+                  })}
+                </span>
+              </div>
+              <span className="request-monitor-worker">{request.unitId ?? "Unassigned"}</span>
+            </div>
             <RequestActions request={request} open={actionsId === request.convexId} onToggle={() => setActionsId(current => current === request.convexId ? null : request.convexId)} onClose={() => setActionsId(null)} onEdit={() => { setActionsId(null); onEditRequest(request); }} onDuplicate={() => { setActionsId(null); onDuplicateRequest(request); }} onDelete={() => { setActionsId(null); onDeleteRequest(request); }} onReset={() => { setActionsId(null); onResetRequest(request); }} />
           </div>
           <div id={`execution-${request.convexId}`} hidden={!open}>{open && <RequestExecution key={`${request.convexId}:${request.resetVersion ?? 0}`} activeRequest={request} activeRequestPipelineNodes={pipelineNodes} />}</div>

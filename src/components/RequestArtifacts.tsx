@@ -61,13 +61,15 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
       <button type="button" className="request-files-toggle" aria-expanded={open} aria-controls={panelId} onClick={onToggle}>
         <span aria-hidden="true">{open ? "⌄" : "›"}</span><b>Artifacts</b><span className="request-files-count">{request.artifacts?.length ?? 0}</span>
       </button>
-      <button className="subtle-button" disabled={busy || (request.artifacts?.length ?? 0) >= 100} onClick={() => input.current?.click()}>{busy ? "Uploading…" : "Upload file"}</button>
+      <div className="request-files-heading-actions">
+        <DisplayModeSwitch mode={mode} onChange={setMode} label="Artifact layout" />
+        <button className="subtle-button" disabled={busy || (request.artifacts?.length ?? 0) >= 100} onClick={() => input.current?.click()}>{busy ? "Uploading…" : "Upload file"}</button>
+      </div>
       <Input ref={input} type="file" hidden disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
     </div>
     {error && <p role="alert">{error}</p>}
     <div id={panelId} hidden={!open} className="request-files-body" ref={body}>
     {highlightedNode && <div className="request-files-focus"><span role="status">{highlightedIds.length} {highlightedIds.length === 1 ? "artifact" : "artifacts"} highlighted · <b>{highlightedNode}</b></span><button className="subtle-button" onClick={onClearHighlight}>Clear highlight</button></div>}
-    <div className="artifact-layout-toolbar"><DisplayModeSwitch mode={mode} onChange={setMode} label="Artifact layout" /></div>
     <div className={`artifact-items artifact-layout-${mode}`}>
     {!request.artifacts?.length && <small>No files attached to this request.</small>}
     {request.artifacts?.map(artifact => {
