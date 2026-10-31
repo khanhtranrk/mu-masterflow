@@ -1,11 +1,9 @@
 import type { PipelineNode } from "./types";
 
 export const tabs = [
-  { id: "pipeline", label: "Pipeline" },
-  { id: "entries", label: "Entries" },
-  { id: "workloads", label: "Workloads" },
-  { id: "spec-yaml", label: "Spec YAML" },
   { id: "requests", label: "Requests" },
+  { id: "overview", label: "Overview" },
+  { id: "spec-yaml", label: "YAML" },
 ] as const;
 
 export const starterYaml = `entries:\n  direct_flow:\n    initialization: []\n    finalization: []\n  master_flow:\n    initialization: []\n    finalization: []\nworkloads: {}\npipeline:\n  main:\n    prepare: []\n    params: {}\n    nodes: []\n`;

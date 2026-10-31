@@ -4,7 +4,7 @@
 
 MasterFlow saves the entire spec document as the `yaml` string on its Convex `specs` document. A spec can contain sections beyond those currently rendered by the UI. Preserve these sections and unknown fields when editing one part.
 
-The desktop has views for `entries`, `workloads`, `pipeline`, requests, and complete YAML editing. These are conveniences over the same YAML document, not separate storage models.
+The spec workspace has three tabs: **Requests** (first and selected when opening a spec), **Overview**, and **YAML**. Overview visualizes entries, pipeline dependency graphs, selected-node actions and conditions, workloads, and arbitrary additional fields. Expand configuration groups to inspect their values. YAML edits the complete document; Overview reflects the unsaved draft, and shows a warning with the last valid document when syntax is invalid. Requests continue to use the saved spec.
 
 ## Pipeline model
 
@@ -36,7 +36,7 @@ This is a structural example only. Keep real spec conditions and commands intact
 
 ## UI graph behavior
 
-`DependencyGraph` derives nodes from the selected pipeline's `nodes` array and edges from each node's `depends_on`. In the editor, the graph opens a full YAML node inspector. In request details, it overlays `requests.nodeStates` on the graph defined by that request's spec pipeline. Selecting a node shows its status, reported device, artifacts, and logs.
+`DependencyGraph` derives nodes from the selected pipeline's `nodes` array and edges from each node's `depends_on`. In Overview, selecting a graph node opens its structured, read-only configuration inspector. In request details, it overlays `requests.nodeStates` on the graph defined by that request's spec pipeline. Selecting a node shows its status, reported device, artifacts, and logs.
 
 Runtime node statuses are `queue`, `running`, `failed`, and `succeeded`. Node states are keyed by node name; if a state is not reported, request detail shows it as not reported.
 
@@ -56,25 +56,15 @@ Use `entries.direct_flow` and `entries.master_flow`, each with action lists
 `initialization` and `finalization`. Root `prepare` and `master-flow.requests`
 were removed from Mu. Put pipeline-specific preparation under
 `pipeline.<name>.prepare`: it runs only when a valid request uses that pipeline,
-once per worker invocation across batches. The Pipeline view edits preparation for the selected pipeline. Complete YAML editing preserves all
+once per worker invocation across batches. The YAML tab edits preparation for each pipeline. Complete YAML editing preserves all
 pipeline fields, including prepare. Existing stored YAML is not auto-migrated.
 
 
 ## Current editor behavior
 
-- **Entries** edits initialization and finalization independently for `direct_flow`
-  (`mu run`) and `master_flow` (`mu master-flow run <spec-slug>`).
-- **Pipeline** includes the node graph and dedicated YAML sections for params,
-  context and prepare. Prepare is lazy and shared across that pipeline's requests;
-  entry and pipeline setup do not receive request params.
-- Dependency checkboxes write string names. Renaming a node updates incoming
-  references. Adding an edge that creates a cycle is rejected. New nodes without
-  an available workload are action-only and omit `run`.
-- **Workloads** uses target, argv args, params, env, device_args and GPU units in
-  4 GiB bands. Zero units means CPU-only.
-- YAML syntax errors keep the raw text visible in the section being edited.
-  Structured edits cannot silently replace an invalid draft. Full YAML remains
-  available to fix unsupported or legacy fields. Unknown keys are preserved.
+- **Overview** is read-only. It displays the entry lifecycle, a dependency graph per pipeline, complete node configuration, pipeline params/context/prepare, workloads, and custom root fields. Conditions and action groups have distinct accents; nested lists preserve their YAML order. YAML aliases are guarded against recursive rendering.
+- **YAML** edits all configuration. Unknown keys remain in the authoritative document. Save validates the complete draft before updating the spec.
+- YAML syntax errors keep the raw text editable and prevent saving. Overview explicitly labels its last-valid-document fallback.
 - Upload and save check the supported format, unique names, dependency references
   and cycles, action lists, conditions and workload calls. Diagnostics name the
   field that needs correction. Runtime execution semantics remain owned by Mu.

@@ -1,4 +1,4 @@
-export type ConfigTab = "pipeline" | "entries" | "workloads" | "spec-yaml" | "requests";
+export type ConfigTab = "requests" | "overview" | "spec-yaml";
 
 export type PipelineNode = Record<string, any> & { name: string };
 
