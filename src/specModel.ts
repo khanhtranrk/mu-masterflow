@@ -3,7 +3,7 @@ import type { PipelineNode } from "./types";
 export const isMapping = (value: unknown): value is Record<string, any> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-const actionTypes = new Set(["execute_command", "create_dir", "write_json", "send_http_request"]);
+const actionTypes = new Set(["execute_command", "execute_workload", "create_dir", "write_json", "send_http_request"]);
 const conditionTypes = new Set(["and", "or", "file_exists", "folder_exists", "path_exists", "exit_code", "action_state", "node_state", "node_status"]);
 
 /** Structural checks for the current Mu format; Mu owns execution semantics. */
@@ -42,11 +42,11 @@ export function specIssues(value: unknown): string[] {
     if (item.context !== undefined) mapping(item.context, `${path}.context`);
     if (item.ignore_error !== undefined && typeof item.ignore_error !== "boolean") fail(`${path}.ignore_error`, "expected a boolean.");
   }
-  function actions(data: unknown, path: string) {
-    if (!Array.isArray(data)) { fail(path, "expected a list of actions."); return; }
+  function actions(data: unknown, path: string, allowWorkload = false) {
+    if (!Array.isArray(data)) { fail(path, "expected a list of actions; replace run: {workload, args} with a list containing type: execute_workload."); return; }
     data.forEach((raw, i) => {
       const at = `${path}[${i}]`, item = mapping(raw, at);
-      if (!actionTypes.has(item.type)) fail(`${at}.type`, "expected execute_command, create_dir, write_json or send_http_request.");
+      if (!actionTypes.has(item.type)) fail(`${at}.type`, "expected execute_command, execute_workload, create_dir, write_json or send_http_request.");
       if ("action" in item || "save_response_to_context" in item) fail(at, "use type and save_state; legacy action fields were removed.");
       if (item.save_state !== undefined && (!["execute_command", "send_http_request"].includes(item.type) || typeof item.save_state !== "string" || !item.save_state.trim())) fail(`${at}.save_state`, "requires a non-empty name on a command or HTTP action.");
       if (item.type === "execute_command" && (typeof item.target !== "string" || !item.target.trim())) fail(`${at}.target`, "expected a non-empty executable.");
@@ -61,6 +61,13 @@ export function specIssues(value: unknown): string[] {
         if (item.timeout !== undefined && (typeof item.timeout === "string" ? !item.timeout.includes("{") : typeof item.timeout !== "number" || !Number.isFinite(item.timeout) || item.timeout <= 0)) fail(`${at}.timeout`, "expected positive seconds or a template.");
       }
       if (item.type === "execute_command" && item.args !== undefined && !Array.isArray(item.args)) fail(`${at}.args`, "expected an argv list.");
+      if (item.type === "execute_workload") {
+        if (!allowWorkload) fail(at, "execute_workload is only supported in node before_run, run and after_run.");
+        const name = item.workload;
+        if (typeof name !== "string" || !name || /[{}]/.test(name)) fail(`${at}.workload`, "expected a literal non-empty workload name; templates cannot be scheduled.");
+        else if (allowWorkload && !Object.prototype.hasOwnProperty.call(workloads, name)) fail(`${at}.workload`, `undefined workload ${name}. Select a declared workload.`);
+        if (item.args !== undefined) mapping(item.args, `${at}.args`);
+      }
       checks(item, at);
     });
   }
@@ -91,14 +98,10 @@ export function specIssues(value: unknown): string[] {
     nodes.forEach((node, i) => {
       const path = `${at}.nodes[${i}]`;
       checks(node, path);
-      for (const phase of ["before_run", "after_run", "finally"]) actions(node[phase] ?? [], `${path}.${phase}`);
+      for (const phase of ["before_run", "run", "after_run", "finally"]) actions(node[phase] === undefined ? [] : node[phase], `${path}.${phase}`, phase !== "finally");
       if (node.depends_on !== undefined && (!Array.isArray(node.depends_on) || node.depends_on.some((d: unknown) => typeof d !== "string" || !d))) fail(`${path}.depends_on`, "use a list of node names, e.g. [prepare, generate]; dependency objects/conditions are not supported.");
       else for (const dependency of node.depends_on ?? []) if (!names.includes(dependency)) fail(`${path}.depends_on`, `unknown node ${dependency}.`);
-      if (node.run !== undefined) {
-        const run = mapping(node.run, `${path}.run`);
-        if (typeof run.workload !== "string" || !(run.workload in workloads)) fail(`${path}.run.workload`, "select a declared workload. Action-only nodes omit run.");
-        if (run.args !== undefined) mapping(run.args, `${path}.run.args`);
-      }
+
     });
     const visiting = new Set<string>(), visited = new Set<string>();
     function visit(n: string): boolean {

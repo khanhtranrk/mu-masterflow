@@ -16,7 +16,7 @@ const { parse } = require('yaml');
 
 test('starter and current entry/pipeline/workload fields match the frontend contract', () => {
   assert.deepEqual(specIssues(parse(starterYaml)), []);
-  assert.deepEqual(specIssues({entries: {master_flow: {initialization: [], finalization: []}}, workloads: {demo: {target: 'python', args: ['--version'], units: 0}}, pipeline: {main: {prepare: [], params: {width: {type: 'number', default: 1024}}, context: {}, nodes: [{name: 'demo', run: {workload: 'demo', args: {}}}]}}}), []);
+  assert.deepEqual(specIssues({entries: {master_flow: {initialization: [], finalization: []}}, workloads: {demo: {target: 'python', args: ['--version'], units: 0}}, pipeline: {main: {prepare: [], params: {width: {type: 'number', default: 1024}}, context: {}, nodes: [{name: 'demo', run: [{type: 'execute_workload', workload: 'demo', args: {}}]}]}}}), []);
 });
 
 test('legacy fields and dependency conditions are actionable errors', () => {
@@ -29,12 +29,12 @@ test('legacy fields and dependency conditions are actionable errors', () => {
   assert.deepEqual(nodeDependencyNames({ name: 'second', depends_on: ['first', { node: 'legacy' }] }), ['first']);
 });
 
-test('cycles, unknown dependencies, duplicate names and action runs are rejected', () => {
+test('cycles, unknown dependencies, duplicate names and legacy workload mappings are rejected', () => {
   for (const nodes of [
     [{ name: 'a', depends_on: ['b'] }, { name: 'b', depends_on: ['a'] }],
     [{ name: 'a', depends_on: ['missing'] }],
     [{ name: 'a' }, { name: 'a' }],
-    [{ name: 'a', run: [{ type: 'create_dir', path: '/tmp/demo' }] }],
+    [{ name: 'a', run: {workload: 'demo'} }],
   ]) assert.ok(specIssues({ pipeline: { p: { nodes } } }).length);
 });
 
@@ -59,4 +59,27 @@ test('request form converts only numbers and leaves defaults to the worker', () 
   assert.throws(() => requestPayload(schema, form), /finite number/);
   form.set('param:width', 'NaN');
   assert.throws(() => requestPayload(schema, form), /finite number/);
+});
+
+test('sequential actions and workload calls validate in the three node phases', () => {
+  const call = {type: 'execute_workload', workload: 'demo', args: {input: '{params[input]}'}, skip_if: {operator: 'file_exists', path: 'done'}};
+  for (const phase of ['before_run', 'run', 'after_run']) {
+    const spec = {workloads: {demo: {target: 'python', units: 3}}, pipeline: {p: {nodes: [{name: 'n', [phase]: [call, {type: 'write_json', path: 'result.json'}]}]}}};
+    assert.deepEqual(specIssues(spec), []);
+    for (const [field, value] of [['workload', 'missing'], ['workload', '{params[name]}'], ['args', []], ['save_state', 'result']]) {
+      const invalid = structuredClone(spec); invalid.pipeline.p.nodes[0][phase][0][field] = value;
+      assert.ok(specIssues(invalid).some(issue => issue.includes(`${phase}[0].${field}`)), `${phase}.${field}`);
+    }
+  }
+  assert.deepEqual(specIssues({pipeline: {p: {nodes: [{name: 'n', run: [{type: 'create_dir', path: 'out'}]}, {name: 'empty', run: []}]}}}), []);
+});
+
+test('workload execution is rejected outside scheduled node phases', () => {
+  const call = {type: 'execute_workload', workload: 'demo'};
+  for (const spec of [
+    {entries: {master_flow: {initialization: [call], finalization: [call]}}},
+    {pipeline: {p: {prepare: [call], nodes: [{name: 'n', finally: [call]}]}}},
+  ]) assert.ok(specIssues(spec).some(issue => issue.includes('only supported in node')));
+  const invalid = {pipeline: {p: {nodes: [{name: 'n', run: {workload: 'demo'}}]}}};
+  assert.ok(specIssues(invalid).some(issue => issue.includes('type: execute_workload')));
 });

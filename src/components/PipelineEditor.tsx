@@ -65,7 +65,7 @@ export function PipelineEditor({
                     <div><span className="view-kicker">NODE CONFIGURATION</span><h3>{String(currentNode.name)}</h3></div>
                     <button className="icon-action" onClick={() => onRemoveNode(String(currentNode.name))} aria-label={`Remove ${String(currentNode.name)}`}>×</button>
                   </div>
-                  <p className="inspector-help">Edit the full node YAML. Use run.workload with an args mapping, or omit run for action-only nodes. before_run, after_run, finally, conditions and custom fields are preserved.</p>
+                  <p className="inspector-help">Edit the full node YAML. Use run as an action list; invoke workloads with type: execute_workload, workload and an args mapping. before_run, after_run, finally, conditions and custom fields are preserved.</p>
                   <label className="advanced-label">Depends on<small>Names only: depends_on: [node_a, node_b]. A dependency must succeed, including its finally actions.</small></label>
                   <div className="dependency-checks">
                     {nodes.filter((node) => String(node.name) !== String(currentNode.name)).map((node) => (

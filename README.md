@@ -50,3 +50,9 @@ Requests can be deleted from the request details with confirmation. Deletion set
 
 
 Request file uploads and downloads use request-level `artifacts[]` backed by Convex File Storage. See [Request artifacts](docs/request-artifacts.md) for schema, receipt validation, worker endpoints, desktop behavior, limits, retention and migration compatibility.
+
+Spec upload, save and YAML diagnostics accept sequential action lists in node
+`before_run`, `run` and `after_run`, including `type: execute_workload` calls.
+Old `run: {workload, args}` mappings require migration. See
+[spec actions, scheduling and migration](docs/spec-yaml.md#sequential-node-actions-and-workload-scheduling)
+and the media artifact example there.

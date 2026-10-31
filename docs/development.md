@@ -97,3 +97,27 @@ bunx --bun convex run requests:list '{"specSlug":"song-with-cover"}' --push
 ## File storage operations
 
 Request artifact metadata and upload receipts are additive schema changes; existing requests can omit `artifacts`. Sync the backend before running an updated desktop or Mu artifact spec. Native upload/download URLs use the backend's configured API origin, not necessarily the HTTP site origin: remote workers must reach both. Preserve file-storage volumes/buckets together with database backups. The default Docker volume is `/convex/data`; use the actual deployment storage configuration when designing backups. Unfinished native uploads are not garbage-collected by this application. See [Request artifacts](request-artifacts.md) for retention and bearer URL behavior.
+
+### Spec format validation checks
+
+`src/specModel.ts` is the shared structural validator used by spec upload/save
+and YAML diagnostics; changes to Mu's action schema must update it together with
+graph workload labels and editor help. Node `run` is an action list, and
+`execute_workload` is allowed only in `before_run`, `run` and `after_run`.
+The validator does not execute commands, resolve templates, contact artifact
+storage, or reserve GPUs. Unknown unrelated YAML fields remain preserved.
+
+Run focused regressions with:
+
+```sh
+node --test tests/spec-model.test.cjs tests/yaml-diagnostics.test.cjs
+bunx --bun tsc --noEmit
+bunx --bun vite build --configLoader runner
+```
+
+When both repositories are checked out, also parse Mu's current
+`examples/song-with-cover/spec.yaml` and `examples/master-flow-artifacts/spec.yaml`
+through `specIssues` as compatibility checks. Do not execute those examples to
+validate the editor: media execution may download models/use GPUs, and artifact
+execution writes to a server. This frontend-only validation change needs no
+Convex schema migration or deployment.

@@ -17,7 +17,7 @@ export function WorkloadsEditor({ names, currentName, config, draft, onSelect, o
   return (
     <section className="editor-view">
       <div className="view-heading">
-        <div><span className="view-kicker">EXECUTABLES</span><h2>Workloads</h2><p>Reusable subprocess commands called through node run.workload.</p></div>
+        <div><span className="view-kicker">EXECUTABLES</span><h2>Workloads</h2><p>Reusable subprocess commands called through execute_workload actions.</p></div>
         <button className="subtle-button" onClick={onAdd}>＋ Add workload</button>
       </div>
       {names.length > 0 ? (

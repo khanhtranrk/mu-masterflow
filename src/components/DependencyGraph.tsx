@@ -58,9 +58,12 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
         {nodes.map((node, index) => {
           const name = String(node.name || `node_${index + 1}`);
           const position = positions.get(name) ?? { x: 30, y: 34 };
-          const run = node.run;
-          const workload = asObject(run).workload;
-          const runLabel = typeof workload === "string" ? workload : run ? "Invalid workload call" : "Action-only node";
+          const workloadNames = ["before_run", "run", "after_run"].flatMap(phase =>
+            Array.isArray(node[phase]) ? node[phase].flatMap((action: unknown) => {
+              const item = asObject(action);
+              return item.type === "execute_workload" && typeof item.workload === "string" ? [item.workload] : [];
+            }) : []);
+          const runLabel = [...new Set(workloadNames)].join(" → ") || "Action-only node";
           const execution = nodeStates?.[name];
           const nodeStatus = execution?.status ?? (runtimeView ? "not_started" : "");
 

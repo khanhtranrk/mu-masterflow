@@ -21,15 +21,18 @@ pipeline:
     nodes:
       - name: generate-song
         run:
-          workload: yue2
+          - type: execute_workload
+            workload: yue2
       - name: generate-cover
         run:
-          workload: qwen-image
+          - type: execute_workload
+            workload: qwen-image
       - name: separate-vocals
         depends_on:
           - generate-song
         run:
-          workload: demucs
+          - type: execute_workload
+            workload: demucs
 ```
 
 This is a structural example only. Keep real spec conditions and commands intact; do not replace arbitrary nodes with a simplified fixed schema.
@@ -141,3 +144,95 @@ count all loaded requests for their pipeline, independently of search/status fil
 While filtering, a separate filtered/total count appears beside the controls. It
 wraps into two rows for narrower windows. Request creation stays in the spec
 header; the content does not repeat the page title or creation button.
+
+## Sequential node actions and workload scheduling
+
+`before_run`, `run`, and `after_run` are separate ordered action lists. Each
+accepts `execute_command`, `execute_workload`, `create_dir`, `write_json`, and
+`send_http_request`. A node runs these phases in that order, then its
+postcondition, then `finally`. The first unignored action failure stops the
+remaining main actions and proceeds to `finally`. `run` may be omitted or `[]`.
+Actions retain context, skip/pre/postconditions and `ignore_error` support.
+
+```yaml
+workloads:
+  inspect:
+    params:
+      input: {type: string}
+    target: python
+    args: [-c, "import pathlib, sys; print(pathlib.Path(sys.argv[1]).stat().st_size)", "{params[input]}"]
+    units: 0
+pipeline:
+  inspect-file:
+    params:
+      input: {type: string}
+    nodes:
+      - name: inspect
+        run:
+          - type: execute_workload
+            workload: inspect
+            args:
+              input: "{params[input]}"
+          - type: write_json
+            path: "{session[output_dir]}/inspected.json"
+            content: {status: completed}
+```
+
+`execute_workload.workload` is a literal name from `workloads`; templates in the
+name are rejected because placement is decided before execution. Its `args` is
+a mapping of workload parameters, distinct from command/workload argv lists.
+Each call gets its own workload params; pipeline and sibling node params remain
+isolated. `save_state` is supported only by command and HTTP actions.
+`execute_workload` is not supported in node `finally`, pipeline `prepare`, or
+entry initialization/finalization.
+
+Mu reserves the **maximum** workload `units` across all three main phases before
+any node action starts. Conditional/skipped workload calls still contribute to
+this maximum. The assigned GPU is held through `finally`; sequential workloads
+share it. `units: 0` workloads remain CPU-only and receive neither device args nor
+schedule context. Nodes without GPU demand wait only for successful dependencies
+and the worker's concurrency limit (32 nodes). `node.total_units` is available
+from node start. MasterFlow validates declarations; Mu owns actual scheduling,
+parameter resolution, device placement and execution.
+
+### Migrating old specs
+
+The former mapping is rejected with a field-path diagnostic:
+
+```yaml
+# Old
+run:
+  workload: inspect
+  args: {input: "{params[input]}"}
+# New
+run:
+  - type: execute_workload
+    workload: inspect
+    args: {input: "{params[input]}"}
+```
+
+Migrate each node deliberately; stored YAML is not automatically rewritten.
+The same validator drives upload, save and the YAML Problems panel. Overview
+preserves every action and graph labels collect workload names from all three
+main phases. Unknown unrelated keys remain intact.
+
+### Media artifact example
+
+The companion Mu `examples/song-with-cover/spec.yaml` uses `run` for generation
+followed by hashing/sizing, receipt creation, binary upload and completion:
+
+| Node | Uploaded files | Stable artifact IDs |
+|---|---|---|
+| `generate-song` | MP3 and ABC notation | `song-mp3`, `song-abc` |
+| `generate-cover` | PNG | `cover-png` |
+| `separate-vocals` | None; WAV stays local | None |
+| `transcribe-vocals` | `transcript/vocals.json` | `transcript-json` |
+
+Generation checks belong on the workload action's `skip_if`, so cached files
+still reach subsequent upload actions. Upload errors fail the node before its
+success report. Upload completion attaches `nodeName`; the following node report
+inherits the registered artifact references. A stable ID replaces that file on
+the same request. Send the worker token only to the application API, never to
+native storage upload URLs. See [request artifacts](request-artifacts.md) for
+endpoint contracts and limits. Media examples require MasterFlow context and
+must not be run as routine validation: they download models and use GPU resources.

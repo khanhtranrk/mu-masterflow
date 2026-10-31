@@ -263,10 +263,12 @@ pipeline:
     nodes:
       - name: generate-song
         run:
-          workload: yue2
+          - type: execute_workload
+            workload: yue2
       - name: generate-cover
         run:
-          workload: qwen-image
+          - type: execute_workload
+            workload: qwen-image
 ```
 
 A pipeline is a DAG. Follow its actual `depends_on` configuration rather than treating node order as mandatory execution order. See [Spec YAML](spec-yaml.md).
