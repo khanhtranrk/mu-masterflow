@@ -31,6 +31,20 @@ function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activ
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [artifactFocus, setArtifactFocus] = useState<{ nodeName: string; version: number } | null>(null);
   const artifactPanelId = useId();
+  const executionView = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = executionView.current;
+    if (!element) return;
+    let previousHorizontal: boolean | undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      const horizontal = entry.contentRect.width > 760;
+      if (horizontal === previousHorizontal) return;
+      previousHorizontal = horizontal;
+      setArtifactsOpen(horizontal);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   function artifactIdsForNode(name: string) {
     const references = activeRequest.nodeStates[name]?.artifacts ?? (activeRequest.artifacts ?? []).filter(a => a.nodeName === name);
     const registered = new Set(activeRequest.artifacts?.map(a => a.id));
@@ -48,7 +62,7 @@ function RequestExecution({ activeRequest, activeRequestPipelineNodes }: { activ
   const focusNode = failedNames[0] ?? runningNames[0] ?? activeNodeNames.find(name => !activeNodes[name]?.status || activeNodes[name]?.status === "queue") ?? activeNodeNames[activeNodeNames.length - 1] ?? "";
   const activeNode = activeNodeNames.includes(selectedNode) ? selectedNode : focusNode;
 
-  return <div className="request-expanded">          <div className="request-execution-view">
+  return <div className="request-expanded">          <div className="request-execution-view" ref={executionView}>
             <DependencyGraph
               nodes={activeRequestPipelineNodes}
               selected={activeNode}

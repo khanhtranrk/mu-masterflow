@@ -49,8 +49,12 @@
 .request-layout-grid .request-actions-dropdown{grid-column:2;grid-row:2;align-self:center}
 .request-layout-grid .request-expanded{padding:8px}
 .request-layout-grid .request-execution-view .graph-viewport{min-height:260px;max-height:360px}
-.request-expanded{min-width:0;border-radius:0 0 13px 13px;background:var(--soft)}
+.request-expanded{min-width:0;border-radius:0 0 13px 13px;background:var(--soft);container-type:inline-size}
 .request-expanded .graph-viewport{background-color:var(--panel)}
+.request-expanded .request-execution-view{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);align-items:stretch;gap:12px}
+.request-expanded .request-files{display:flex;flex-direction:column;min-width:0;min-height:0;height:clamp(290px,42vh,440px);margin:0}
+.request-expanded .request-files-body{flex:1;min-height:0;overflow:auto;align-content:start}
+.request-hub .request-expanded .request-execution-view .graph-viewport{height:clamp(290px,42vh,440px);min-height:0;max-height:none}
 .request-layout-grid>.empty-editor{grid-column:1 / -1}
 .request-files-heading{position:relative;border-radius:7px}
 .artifact-items{display:grid;gap:10px;min-width:0}
@@ -64,6 +68,7 @@
 .artifact-items>small{grid-column:1 / -1}
 
 @media(max-width:1100px){.request-layout-list .request-monitor-worker{display:none}.request-layout-list .request-monitor-node-dots{max-width:140px}}
+@container (max-width:760px){.request-expanded .request-execution-view{grid-template-columns:minmax(0,1fr)}.request-expanded .request-files{height:auto}}
 @media(max-width:750px){.request-monitor-header{padding:4px 10px}.request-hub .request-expand-button{gap:8px;padding:0}.request-hub .request-monitor-title{gap:6px}.request-hub .request-monitor-title>small{gap:4px}.request-hub .request-monitor-title>small>span:first-child{max-width:84px}.request-hub .request-monitor-title>small>span:last-child{max-width:72px}.request-hub .request-monitor-meta{flex:1 1 100%;justify-content:flex-start;padding:0 0 0 26px;gap:8px}.request-layout-grid .request-monitor-meta{grid-row:2;padding:0 0 0 26px}.request-monitor-node-dots{max-width:min(180px,50vw)}.request-files-heading{flex-wrap:wrap}.request-files-heading-actions{gap:5px}.request-files-heading-actions .display-mode-switch button{padding:5px 7px}.request-hub .request-monitor-list.request-layout-grid{grid-template-columns:1fr}}
 /* Runtime colors and selection stay reactive without motion. */
 .request-expand-chevron{display:inline-block}
