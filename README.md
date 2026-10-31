@@ -1,63 +1,67 @@
-# MasterFlow
+# MU MasterFlow
 
-MasterFlow is a small desktop app for authoring and managing `spec.yaml` files, their pipeline dependency graphs, and requests created for those pipelines. It uses React, Vite, Tauri, and Convex.
+**A desktop control center for MU pipelines and workers.**
 
-Worker notifications are delivered in real time to the Notifications page. When the app is focused, new notifications appear in an in-app toast; when it is not focused, Tauri can show a system notification after notification permission is granted.
+MasterFlow is the management side of [MU](https://github.com/khanhtranrk/mu). Create and edit pipeline specifications, submit requests, connect workers, and follow execution progress in one place. The actual workloads run through [MU CLI](https://github.com/khanhtranrk/mu-cli).
 
-The desktop supports email/password sign-in and registration of the first account on the selected Convex server. Each deployment permits only one account; this is enforced by the backend, not just the UI. Public app queries and mutations reject unauthenticated calls. Remembered account emails are stored with their server profile on this device; passwords are never saved. The single account has access to all app data.
+Built with **React, Vite, Tauri, and Convex**.
 
-The sidebar shows the selected server name in a connection-status badge. **Settings** groups server management, Unit token management, account sign-out, and light/dark appearance. Disconnecting returns to Settings with the saved server profiles still available; it does not delete a profile or its remembered email. The selected appearance is persisted with the app's local connection settings.
+## What you can do
 
-## Start here
+- Manage YAML pipeline specifications and view their dependency graphs.
+- Create requests for different pipelines and inspect node-by-node progress.
+- Monitor connected workers, execution states, and notifications.
+- Upload and retrieve request artifacts through Convex File Storage.
+- Connect the desktop to a Convex server and manage worker access tokens.
 
-- [Agent guide](AGENT.md): product intent, code map, invariants, and safe workflow for continuing development.
-- [Architecture and data model](docs/architecture.md)
-- [Spec YAML and pipeline graph](docs/spec-yaml.md)
-- [Worker HTTP hooks](docs/worker-hooks.md)
-- [Development and desktop app](docs/development.md)
+## Get started
 
-## Quick start
+**Requirements:** [Bun](https://bun.sh/), a configured Convex backend, and the prerequisites for Tauri if running the native desktop app.
 
-Install dependencies with `bun install`. On first launch, add a Convex server using its client/API URL and HTTP site URL. Server profiles are saved in the Tauri app config directory and can be managed in **Settings**; the sign-in screen has a dedicated server-selection dialog. For the default self-hosted Docker setup the URLs are usually `http://127.0.0.1:3210` and `http://127.0.0.1:3211`. Optional `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` values in `.env.local` are imported as the initial server profile for existing development setups. Configure Convex Auth on each deployment and register its first account before signing in; later registrations are rejected. Configure `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` only for the Convex CLI as described in [Development and desktop app](docs/development.md); the app does not request or store an admin key. Sync functions with `bunx --bun convex dev`, then start the frontend with `bun run dev`. The native Tauri window is started with `bun run tauri -- dev`.
+```bash
+git clone https://github.com/khanhtranrk/mu-masterflow.git
+cd mu-masterflow
+bun install
+```
 
-Build the frontend with `bunx --bun vite build --configLoader runner` when the environment cannot write Vite's temporary config bundle under `node_modules/.vite-temp`; the usual `bun run build` is also available in a normal writable checkout.
+Configure and synchronize the Convex backend using the [development guide](docs/development.md), then start the frontend:
 
-## Core design
+```bash
+bun run dev
+```
 
-A spec is stored as one complete YAML string in Convex; there is no separate spaces table. Each request is a separate Convex document keyed by `specSlug` and associated with a `pipelineName`. Request input is stored as `payload`; per-node runtime status, device, artifacts, and logs are stored in `nodeStates`. The pipeline graph is derived from `depends_on` in the YAML. It is not a linear list of sequential steps.
+For the native desktop window:
 
-Worker hooks are documented in [docs/worker-hooks.md](docs/worker-hooks.md). Units (Workers) use Unit tokens managed from **Settings → Unit tokens** through regular Convex queries and mutations. The token manager stores only token hashes; the generated plaintext is shown once when a token is created. Anyone who can sign in to the Convex deployment can manage these tokens.
+```bash
+bun run tauri -- dev
+```
 
-The worker hook `POST /api/notifications/send` can create a notification for the desktop. See [Worker HTTP hooks](docs/worker-hooks.md) for its request and response contract.
+On first launch, configure a Convex server with its **client/API URL** and **HTTP site URL**. Authentication and worker tokens are managed separately. The [development guide](docs/development.md) covers self-hosted configuration, environment variables, and deployment details.
 
+## Documentation
 
-## Mu worker lifecycle
+| Topic | Where to read |
+| --- | --- |
+| Architecture and data model | [Architecture](docs/architecture.md) |
+| YAML specs, pipeline graph, editor behavior | [Spec YAML](docs/spec-yaml.md) |
+| Worker HTTP endpoints and integration | [Worker hooks](docs/worker-hooks.md) |
+| Artifact upload, download, and storage | [Request artifacts](docs/request-artifacts.md) |
+| Local setup, Convex, and Tauri | [Development](docs/development.md) |
+| Cross-project workspace | [MU workspace](https://github.com/khanhtranrk/mu) |
 
-Workers use `mu master-flow run <spec-slug>` with `MU_MASTER_FLOW_SERVER`
-(HTTP site URL) and `MU_MASTER_FLOW_TOKEN`, overridden by `--server` / `--token`.
-Specs declare `entries.direct_flow` / `entries.master_flow` initialization and
-finalization, plus lazy `pipeline.<name>.prepare`. See [spec lifecycle](docs/spec-yaml.md#worker-lifecycle)
-and [worker API / batch options](docs/worker-hooks.md#mu-cli-integration).
+Detailed status enums, endpoint payloads, schema invariants, and compatibility rules belong in the linked technical docs.
 
+## For coding agents and contributors
 
-The spec editor follows the current Mu format: entry lifecycle actions, lazy
-pipeline preparation, pipeline params/context and node-name dependencies.
-Upload/save diagnostics identify unsupported legacy fields. New request forms
-preserve number types and omit defaults unless overridden. See
-[editor behavior](docs/spec-yaml.md#current-editor-behavior).
+Read **[AGENTS.md](AGENTS.md)** first, then the comprehensive **[AGENT.md](AGENT.md)** guide. These explain the code map, product intent, data model invariants, API contracts, and safe development workflow. Consult the relevant technical documentation before modifying frontend or backend behavior.
 
-Requests can be deleted from the request details with confirmation. Deletion sets optional `requests.deletedAt` (Unix milliseconds) and preserves the record. It leaves the existing `status` unchanged; `deleted` is not a request status. Visibility and claim eligibility depend on `deletedAt`, independently of execution status. Deleted requests are excluded through indexes before list/inspection/claim limits and cannot be edited. Deletion is idempotent and does not cancel an already running worker; its reports remain accepted without clearing `deletedAt`.
+For a focused frontend validation after setup:
 
+```bash
+bunx --bun tsc --noEmit
+bun run build
+```
 
-Request file uploads and downloads use request-level `artifacts[]` backed by Convex File Storage. See [Request artifacts](docs/request-artifacts.md) for schema, receipt validation, worker endpoints, desktop behavior, limits, retention and migration compatibility.
+Changes to worker APIs or shared YAML semantics may also require changes in MU CLI. Coordinate those in the [MU workspace](https://github.com/khanhtranrk/mu).
 
-Spec upload, save and YAML diagnostics accept sequential action lists in node
-`before_run`, `run` and `after_run`, including `type: execute_workload` calls.
-Old `run: {workload, args}` mappings require migration. See
-[spec actions, scheduling and migration](docs/spec-yaml.md#sequential-node-actions-and-workload-scheduling)
-and the media artifact example there.
-
-Request items distinguish worker queue, active node execution and incomplete final
-reports. Mu schedules and reports node lifecycle automatically; node `reason`
-explains waits and dependency blocking. See [request state presentation](docs/spec-yaml.md#scheduler-state-in-request-items)
-and [automatic lifecycle reports](docs/worker-hooks.md#automatic-mu-lifecycle-reporting).
+**MasterFlow manages the work. [MU CLI](https://github.com/khanhtranrk/mu-cli) executes it.**
