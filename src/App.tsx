@@ -53,7 +53,8 @@ function App({
   const [notificationsActive, setNotificationsActive] = useState(false);
   const [settingsActive, setSettingsActive] = useState(false);
   const [incomingNotification, setIncomingNotification] = useState<{ title: string; message: string } | null>(null);
-  const [activePipeline, setActivePipeline] = useState("");
+  const [activePipelines, setActivePipelines] = useState<Record<string, string>>({});
+  const [cachedRequestsBySpec, setCachedRequestsBySpec] = useState<Record<string, RequestItem[]>>({});
   const [activeTab, setActiveTab] = useState<ConfigTab>("requests");
   const [yamlDraft, setYamlDraft] = useState("");
   const [modal, setModal] = useState<"spec" | null>(null);
@@ -88,6 +89,45 @@ function App({
   }).map(spec => spec.slug)), [remoteSpecs]);
   const activeSpec = specs.find((spec) => spec.slug === activeSpecSlug) ?? specs[0];
   const remoteRequests = useQuery(api.requests.list, activeSpec ? { specSlug: activeSpec.slug } : "skip");
+  const mappedRemoteRequests = useMemo((): RequestItem[] | undefined => {
+    if (remoteRequests === undefined) return undefined;
+    const matchingRequests = remoteRequests.filter(request => request.specSlug === activeSpec?.slug);
+    if (matchingRequests.length !== remoteRequests.length) return undefined;
+    return matchingRequests.map((request) => {
+      const id = `REQ-${String(request._id).slice(-4).toUpperCase()}`;
+      const payload = request.payload;
+      return {
+        id,
+        convexId: request._id,
+        title: requestTitle(payload, id),
+        pipelineName: request.pipelineName,
+        status: ({
+          waitting: "waiting",
+          queued: "waiting",
+          received: "possessed",
+          running: "processing",
+          success: "succeeded",
+          complete: "succeeded",
+          completed: "succeeded",
+          failed: "process_failed",
+        } as Record<string, string>)[request.status] ?? request.status,
+        createdAt: request._creationTime,
+        payload,
+        unitId: request.unitId,
+        artifacts: request.artifacts,
+        resetVersion: request.resetVersion,
+        nodeStates: asObject(request.nodeStates) as RequestItem["nodeStates"],
+      };
+    });
+  }, [remoteRequests, activeSpec?.slug]);
+  const cachedRequests = activeSpec ? cachedRequestsBySpec[activeSpec.slug] : undefined;
+  const requests = mappedRemoteRequests ?? cachedRequests ?? [];
+  const requestsLoading = mappedRemoteRequests === undefined && cachedRequests === undefined;
+  const activePipeline = activeSpec ? activePipelines[activeSpec.slug] ?? "" : "";
+  const selectPipeline = (name: string) => {
+    if (!activeSpec) return;
+    setActivePipelines(previous => ({ ...previous, [activeSpec.slug]: name }));
+  };
   const createSpec = useMutation(api.specs.create);
   const updateSpec = useMutation(api.specs.update);
   const renameSpec = useMutation(api.specs.rename);
@@ -130,32 +170,10 @@ function App({
     return () => window.clearTimeout(timeout);
   }, [incomingNotification]);
 
-  const requests: RequestItem[] = (remoteRequests ?? []).map((request) => {
-    const id = `REQ-${String(request._id).slice(-4).toUpperCase()}`;
-    const payload = request.payload;
-    return {
-      id,
-      convexId: request._id,
-      title: requestTitle(payload, id),
-      pipelineName: request.pipelineName,
-      status: ({
-        waitting: "waiting",
-        queued: "waiting",
-        received: "possessed",
-        running: "processing",
-        success: "succeeded",
-        complete: "succeeded",
-        completed: "succeeded",
-        failed: "process_failed",
-      } as Record<string, string>)[request.status] ?? request.status,
-      createdAt: request._creationTime,
-      payload,
-      unitId: request.unitId,
-      artifacts: request.artifacts,
-      resetVersion: request.resetVersion,
-      nodeStates: asObject(request.nodeStates) as RequestItem["nodeStates"],
-    };
-  });
+  useEffect(() => {
+    if (!activeSpec || mappedRemoteRequests === undefined) return;
+    setCachedRequestsBySpec(previous => ({ ...previous, [activeSpec.slug]: mappedRemoteRequests }));
+  }, [activeSpec?.slug, mappedRemoteRequests]);
   const parsed = useMemo(() => {
     try {
       const value = parse(yamlDraft || activeSpec?.yaml || starterYaml);
@@ -199,7 +217,6 @@ function App({
     }
     try { lastParsed.current = asObject(parse(activeSpec.yaml)); } catch { lastParsed.current = {}; }
     setYamlDraft(activeSpec.yaml);
-    setActivePipeline("");
     setSelectedRequest(null);
     setRequestEditor(null);
     setError("");
@@ -301,7 +318,7 @@ function App({
       id = await createRequest({ specSlug: activeSpec.slug, pipelineName, payload });
     }
     setRequestEditor(null);
-    setActivePipeline(pipelineName);
+    selectPipeline(pipelineName);
     setActiveTab("requests");
     setSelectedRequest(id);
     notice(requestEditor.mode === "edit" ? "Request updated" : "Request added to waiting queue");
@@ -501,14 +518,15 @@ function App({
               )}
               {activeTab === "requests" && (
                 <RequestsView
-                  key={activeSpec._id}
+                  specSlug={activeSpec.slug}
                   pipelineNames={savedPipelineNames}
                   pipelineCounts={Object.fromEntries(savedPipelineNames.map(name => [name, requests.filter(request => request.pipelineName === name).length]))}
                   currentPipelineName={requestPipelineName}
                   requests={visibleRequests}
+                  requestsLoading={requestsLoading}
                   pipelineNodes={activeRequestPipelineNodes}
                   selectedRequest={selectedRequest}
-                  onSelectPipeline={setActivePipeline}
+                  onSelectPipeline={selectPipeline}
                   onEditRequest={openEditRequest}
                   onDuplicateRequest={duplicateRequest}
                   onDeleteRequest={deleteRequest}

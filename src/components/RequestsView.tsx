@@ -11,10 +11,12 @@ import { Status } from "./Status";
 import { RequestArtifacts } from "./RequestArtifacts";
 
 type RequestsViewProps = {
+  specSlug: string;
   pipelineNames: string[];
   pipelineCounts: Record<string, number>;
   currentPipelineName: string;
   requests: RequestItem[];
+  requestsLoading: boolean;
   pipelineNodes: PipelineNode[];
   selectedRequest: string | null;
   onSelectPipeline: (name: string) => void;
@@ -79,15 +81,19 @@ function RequestActions({ request, open, onToggle, onClose, onEdit, onDuplicate,
     ]} /></div>;
 }
 
-export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineName, requests, pipelineNodes, selectedRequest, onSelectPipeline, onEditRequest, onDuplicateRequest, onDeleteRequest, onResetRequest }: RequestsViewProps) {
+export function RequestsView({ specSlug, pipelineNames, pipelineCounts, currentPipelineName, requests, requestsLoading, pipelineNodes, selectedRequest, onSelectPipeline, onEditRequest, onDuplicateRequest, onDeleteRequest, onResetRequest }: RequestsViewProps) {
   const [mode, setMode] = useDisplayMode("mu-masterflow:requests-layout", "list");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchBySpec, setSearchBySpec] = useState<Record<string, string>>({});
+  const [statusFilterBySpec, setStatusFilterBySpec] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [actionsId, setActionsId] = useState<string | null>(null);
   const [failedFlash, setFailedFlash] = useState<Record<string, boolean>>({});
   const previousStatuses = useRef(new Map<string, string>());
   const failedFlashTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const search = searchBySpec[specSlug] ?? "";
+  const statusFilter = statusFilterBySpec[specSlug] ?? "all";
+  const setSearch = (value: string) => setSearchBySpec(previous => ({ ...previous, [specSlug]: value }));
+  const setStatusFilter = (value: string) => setStatusFilterBySpec(previous => ({ ...previous, [specSlug]: value }));
   useEffect(() => {
     const changed = requests.filter(request => previousStatuses.current.get(request.convexId) !== request.status);
     if (changed.length) {
@@ -154,8 +160,13 @@ export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineNam
         <DisplayModeSwitch mode={mode} onChange={setMode} label="Request layout" />
       </div>
     </div>
-    <div className={`request-monitor-list request-layout-${mode}`}>
-      {filtered.map(request => {
+    <div className={`request-monitor-list request-layout-${mode}`} aria-busy={requestsLoading}>
+      {requestsLoading ? <div className="request-loading-list" role="status" aria-label="Loading requests">
+        <span>Loading requests…</span>
+        {[0, 1, 2].map(item => <div className="request-loading-placeholder" key={item} aria-hidden="true">
+          <i /><div><b /><small /></div><em /><span />
+        </div>)}
+      </div> : filtered.map(request => {
         const open = expanded[request.convexId] ?? request.status === "processing";
         const completed = pipelineNodes.filter(node => request.nodeStates[node.name]?.status === "succeeded").length;
         const summary = requestExecutionSummary(request, pipelineNodes);
@@ -173,7 +184,7 @@ export function RequestsView({ pipelineNames, pipelineCounts, currentPipelineNam
           <div id={`execution-${request.convexId}`} hidden={!open}>{open && <RequestExecution key={`${request.convexId}:${request.resetVersion ?? 0}`} activeRequest={request} activeRequestPipelineNodes={pipelineNodes} />}</div>
         </article>;
       })}
-      {!filtered.length && <div className="empty-editor"><b>{requests.length ? "No requests match your filters" : "No requests yet"}</b><small>{requests.length ? "Try another name or status." : currentPipelineName ? "Use New request above to run this pipeline." : "Save a pipeline in YAML to start creating requests."}</small></div>}
+      {!requestsLoading && !filtered.length && <div className="empty-editor"><b>{requests.length ? "No requests match your filters" : "No requests yet"}</b><small>{requests.length ? "Try another name or status." : currentPipelineName ? "Use New request above to run this pipeline." : "Save a pipeline in YAML to start creating requests."}</small></div>}
     </div>
 
   </section>;
