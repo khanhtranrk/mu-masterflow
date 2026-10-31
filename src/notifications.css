@@ -11,31 +11,21 @@
   font-size: 8px;
   font-weight: 650;
 }
-.notification-unread-summary {
-  color: var(--muted);
-  font-size: 9px;
-  white-space: nowrap;
-}
-.notification-permission {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
-  padding: 13px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--soft);
-}
-.notification-permission b { font-size: 10px; font-weight: 620; }
-.notification-permission p { margin: 4px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
-.notification-list { display: grid; gap: 8px; }
+.editor-scroll.notifications-scroll{padding:16px 24px 32px}
+.editor-view.notifications-view{width:100%;margin:0}
+.notifications-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;min-height:36px;margin-bottom:16px}
+.notifications-toolbar h1{display:flex;align-items:center;gap:10px;min-width:0;margin:0;font-size:18px;font-weight:600;letter-spacing:-.3px}
+.notification-unread-summary{padding:3px 8px;border-radius:12px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:500;white-space:nowrap;letter-spacing:0}
+.notification-permission{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px;flex-wrap:wrap}
+.notification-permission b{color:var(--text);font-weight:500}
+.notification-permission .subtle-button{font-size:11px}
+.notification-list { display: grid; gap: 12px; }
 .notification-card {
   display: grid;
   grid-template-columns: 7px minmax(0,1fr) auto;
   align-items: start;
   gap: 11px;
-  padding: 13px;
+  padding: 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -51,13 +41,13 @@
 .notification-card.unread .notification-unread-dot { background: var(--accent); }
 .notification-content { min-width: 0; }
 .notification-card-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.notification-card-heading h3 { margin: 0; font-size: 10px; font-weight: 630; }
-.notification-card-heading time { color: var(--muted); font-size: 8px; white-space: nowrap; }
-.notification-content>p { margin: 6px 0 0; color: var(--muted); font-size: 9px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notification-card-heading h3 { margin: 0; overflow-wrap:anywhere; font-size: 13px; font-weight: 630; }
+.notification-card-heading time { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.notification-content>p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .notification-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .notification-tags span { padding: 3px 6px; border-radius: 10px; background: var(--soft); color: var(--muted); font-size: 8px; }
 .notification-actions { display: flex; align-items: center; gap: 5px; }
-.notification-actions .subtle-button { height: 27px; padding: 0 7px; font-size: 8px; }
+.notification-actions .subtle-button { height: 30px; padding: 0 9px; font-size: 10px; }
 .notification-toast {
   position: fixed;
   z-index: 20;
@@ -91,4 +81,17 @@
   .notification-card { grid-template-columns: 7px minmax(0,1fr); }
   .notification-card-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .notification-actions { grid-column: 2; }
+}
+
+.notification-card:is(:hover,:focus-within){background:color-mix(in srgb,var(--panel) 96%,var(--accent));border-color:color-mix(in srgb,var(--line) 55%,var(--accent))}
+@media(max-width:650px){.editor-scroll.notifications-scroll{padding:16px 13px 24px}}
+
+.notifications-view{container-type:inline-size;container-name:notifications-workspace}
+.notification-content>p{max-width:80ch;line-height:1.7}
+.notification-content .notification-tags{max-width:80ch}
+.notification-card-heading{min-width:0}
+@container notifications-workspace (max-width:620px){
+  .notification-card{grid-template-columns:7px minmax(0,1fr)}
+  .notification-card-heading{align-items:flex-start;flex-direction:column;gap:4px}
+  .notification-actions{grid-column:2;flex-wrap:wrap}
 }

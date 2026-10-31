@@ -24,7 +24,7 @@ function Value({ value, depth = 0, ancestors = [] }: { value: unknown; depth?: n
   </div>;
 }
 
-export function SpecOverview({ document, stale, dirty, onOpenYaml }: { document: Record<string, any>; stale: boolean; dirty: boolean; onOpenYaml: () => void }) {
+export function SpecOverview({ document, stale, onOpenYaml }: { document: Record<string, any>; stale: boolean; onOpenYaml: () => void }) {
   const pipelines = asObject(document.pipeline);
   const names = Object.keys(pipelines);
   const [selection, setSelection] = useState("");
@@ -37,19 +37,17 @@ export function SpecOverview({ document, stale, dirty, onOpenYaml }: { document:
   const { nodes: _nodes, ...pipelineFields } = config;
   const extra = Object.fromEntries(Object.entries(document).filter(([key]) => !["entries", "pipeline", "workloads"].includes(key)));
   return <section className="spec-overview">
-    <div className="view-heading"><div><span className="view-kicker">SPEC MAP · {dirty ? "UNSAVED DRAFT" : "SAVED SPEC"}</span><h2>Overview</h2><p>Explore the flow lifecycle, dependencies and configuration. Select a node to inspect its actions and conditions.</p></div><button className="subtle-button" onClick={onOpenYaml}>Edit YAML ↗</button></div>
-    {stale && <p className="overview-warning" role="status">YAML contains an error. Showing the last valid document until it is fixed.</p>}
-    <div className="overview-stats">{[[names.length, "Pipelines"], [Object.keys(workloads).length, "Workloads"], [Object.keys(asObject(document.entries)).length, "Entries"]].map(([count, label]) => <div key={label}><b>{count}</b><span>{label}</span></div>)}</div>
-    <section className="overview-section"><div className="overview-section-heading"><h3>Entries</h3><p>Initialization → pipeline execution → finalization</p></div>
+    {stale && <p className="overview-warning" role="status">YAML contains an error. Showing the last valid document until it is fixed. <button className="subtle-button" onClick={onOpenYaml}>Edit YAML</button></p>}
+    <section className="overview-section"><div className="overview-section-heading"><h3>Entries <span className="overview-count">{Object.keys(asObject(document.entries)).length}</span></h3><p>Initialization → pipeline execution → finalization</p></div>
       <div className="overview-entry-grid">{Object.entries(asObject(document.entries)).map(([entry, value]) => <article className="overview-card" key={entry}><h4>{entry}</h4><Value value={value} /></article>)}</div>
       {!Object.keys(asObject(document.entries)).length && <p className="overview-empty">No entries defined.</p>}
     </section>
-    <section className="overview-section"><div className="overview-section-heading"><h3>Pipelines</h3><p>Arrows represent depends_on. Independent branches can run in parallel.</p></div>
-      <div className="overview-pipelines" aria-label="Choose pipeline">{names.map(item => <button className={item === name ? "chosen" : ""} aria-pressed={item === name} key={item} onClick={() => { setSelection(item); setNodeSelection(""); }}>{item}</button>)}</div>
-      {name ? <><div className="overview-graph-layout"><div className="overview-card overview-graph"><h4>{name} <small>{nodes.length} nodes</small></h4>{nodes.length ? <DependencyGraph nodes={nodes} selected={selected?.name ?? ""} onSelect={setNodeSelection} /> : <p className="overview-empty">No nodes defined.</p>}</div><aside className="overview-card overview-inspector"><span className="view-kicker">SELECTED NODE</span><h4>{selected?.name ?? "No node selected"}</h4>{selected && <Value key={`${name}:${selected.name}`} value={selected} />}</aside></div>
+    <section className="overview-section"><div className="overview-section-heading"><h3>Pipelines <span className="overview-count">{names.length}</span></h3><p>Arrows represent depends_on. Independent branches can run in parallel.</p></div>
+      <div className="overview-pipelines" aria-label="Choose pipeline">{names.map(item => <button className={item === name ? "chosen" : ""} aria-pressed={item === name} key={item} onClick={() => { setSelection(item); setNodeSelection(""); }}><span>{item}</span><span className="overview-count">{Array.isArray(asObject(pipelines[item]).nodes) ? asObject(pipelines[item]).nodes.length : 0}</span></button>)}</div>
+      {name ? <><div className="overview-graph-layout"><div className="overview-card overview-graph"><h4>Dependency graph <small>Select a node to inspect</small></h4>{nodes.length ? <DependencyGraph nodes={nodes} selected={selected?.name ?? ""} onSelect={setNodeSelection} /> : <p className="overview-empty">No nodes defined.</p>}</div><aside className="overview-card overview-inspector"><h4>{selected?.name ?? "No node selected"}</h4>{selected && <Value key={`${name}:${selected.name}`} value={selected} />}</aside></div>
         <details className="overview-card overview-pipeline-config" open><summary>Pipeline configuration <small>Parameters · context · preparation · custom fields</small></summary><Value key={name} value={pipelineFields} /></details></> : <p className="overview-empty">No pipelines defined.</p>}
     </section>
-    <section className="overview-section"><div className="overview-section-heading"><h3>Workloads</h3><p>Execution targets, arguments, environment and device requirements.</p></div><div className="overview-entry-grid">{Object.entries(workloads).map(([key, value]) => <details className="overview-card" key={key}><summary>{key}</summary><Value value={value} /></details>)}</div>{!Object.keys(workloads).length && <p className="overview-empty">No workloads defined.</p>}</section>
+    <section className="overview-section"><div className="overview-section-heading"><h3>Workloads <span className="overview-count">{Object.keys(workloads).length}</span></h3><p>Execution targets, arguments, environment and device requirements.</p></div><div className="overview-entry-grid">{Object.entries(workloads).map(([key, value]) => <details className="overview-card" key={key}><summary>{key}</summary><Value value={value} /></details>)}</div>{!Object.keys(workloads).length && <p className="overview-empty">No workloads defined.</p>}</section>
     {Object.keys(extra).length > 0 && <section className="overview-section"><h3>Additional configuration</h3><Value value={extra} /></section>}
   </section>;
 }

@@ -1,7 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { Input } from "./ui/Input";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
+
+const DateTimePicker = lazy(() => import("./ui/DateTimePicker").then(module => ({ default: module.DateTimePicker })));
+const datePickerLoading = <button type="button" disabled className="ui-date-trigger">Loading date picker…</button>;
 
 type UnitToken = {
   _id: Id<"unitTokens">;
@@ -41,7 +45,9 @@ function expiryTimestamp(value: string) {
   return timestamp;
 }
 
-export function UnitTokensView() {
+export function UnitTokensView({ open = true }: { open?: boolean }) {
+  const revealOpen = useRef(open);
+  revealOpen.current = open;
   const [includeRevoked, setIncludeRevoked] = useState(false);
   const [name, setName] = useState("");
   const [expiresAtInput, setExpiresAtInput] = useState("");
@@ -57,8 +63,18 @@ export function UnitTokensView() {
   const createUnitToken = useMutation(api.unitTokens.create);
   const updateUnitToken = useMutation(api.unitTokens.update);
   const revokeUnitToken = useMutation(api.unitTokens.revoke);
-  const tokens = remoteTokens ?? [];
-  const loading = remoteTokens === undefined;
+  // Keep only the last metadata snapshot while a filter query is resolving.
+  // Convex remains the source of truth and replaces it as soon as results arrive.
+  const lastLoaded = useRef<UnitToken[] | undefined>(undefined);
+  useEffect(() => { if (remoteTokens !== undefined) lastLoaded.current = remoteTokens; }, [remoteTokens]);
+  const tokens = remoteTokens ?? lastLoaded.current;
+  const loading = tokens === undefined;
+  const refreshing = remoteTokens === undefined && !loading;
+
+  useEffect(() => {
+    // Collapsing must not preserve the one-time plaintext reveal.
+    if (!open) { setNewToken(""); setCopied(false); }
+  }, [open]);
 
   async function createToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,7 +91,7 @@ export function UnitTokensView() {
         tokenHash,
         ...(expiresAt !== null && { expiresAt }),
       });
-      setNewToken(token);
+      setNewToken(revealOpen.current ? token : "");
       setName("");
       setExpiresAtInput("");
     } catch (reason) {
@@ -150,8 +166,8 @@ export function UnitTokensView() {
       <form className="auth-admin-card unit-token-create" onSubmit={(event) => void createToken(event)}>
         <div><b>Create unit token</b><p>Token plaintext is shown once. Save it in the Unit's secret configuration.</p></div>
         <div className="unit-token-form-fields">
-          <label>Name<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Unit or integration" /></label>
-          <label>Expires at <input type="datetime-local" min={toLocalDateTime(Date.now() + 60_000)} value={expiresAtInput} onChange={(event) => setExpiresAtInput(event.target.value)} /></label>
+          <label>Name<Input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Unit or integration" /></label>
+          <label>Expires at <Suspense fallback={datePickerLoading}><DateTimePicker label="New token expiration" min={toLocalDateTime(Date.now() + 60_000)} value={expiresAtInput} onValueChange={setExpiresAtInput} disabled={saving} /></Suspense></label>
           <button className="request-button" disabled={saving}>{saving ? "Creating…" : "Create token"}</button>
         </div>
       </form>
@@ -165,26 +181,28 @@ export function UnitTokensView() {
       )}
 
       <div className="unit-token-list-heading">
-        <b>Tokens <span>{tokens.length}</span></b>
-        <label><input type="checkbox" checked={includeRevoked} onChange={(event) => setIncludeRevoked(event.target.checked)} /> Include revoked</label>
+        <b>Tokens <span>{tokens === undefined ? "—" : tokens.length}</span></b>
+        {refreshing && <span className="unit-token-refresh" role="status">Updating…</span>}
+        <label><Input type="checkbox" checked={includeRevoked} onChange={(event) => setIncludeRevoked(event.target.checked)} /> Include revoked</label>
       </div>
-      {loading ? <div className="empty-editor"><small>Loading unit tokens…</small></div> : tokens.length > 0 ? (
+      <div className="unit-token-results" aria-busy={loading || refreshing}>
+      {tokens === undefined ? <div className="unit-token-loading" role="status"><span>Loading unit tokens…</span><div className="unit-token-placeholder" aria-hidden="true" /><div className="unit-token-placeholder" aria-hidden="true" /></div> : tokens.length > 0 ? (
         <div className="unit-token-list">
           {tokens.map((token) => (
-            <article className="unit-token-card" key={token._id}>
+            <article className="unit-token-card" data-editing={editingId === token._id} key={token._id}>
               <div className="unit-token-card-heading">
-                <div><b>{token.name}</b><span className={`unit-token-status ${tokenStatus(token).toLowerCase()}`}>{tokenStatus(token)}</span></div>
+                <div><b title={token.name}>{token.name}</b><span className={`unit-token-status ${tokenStatus(token).toLowerCase()}`}>{tokenStatus(token)}</span></div>
                 <div className="unit-token-actions">
-                  {token.deletedAt === undefined && <button className="subtle-button" onClick={() => beginEdit(token)}>Edit</button>}
-                  {token.deletedAt === undefined && <button className="subtle-button danger" disabled={saving} onClick={() => void revokeToken(token)}>Revoke</button>}
+                  {token.deletedAt === undefined && <button className="subtle-button" disabled={saving || refreshing} onClick={() => beginEdit(token)}>Edit</button>}
+                  {token.deletedAt === undefined && <button className="subtle-button danger" disabled={saving || refreshing} onClick={() => void revokeToken(token)}>Revoke</button>}
                 </div>
               </div>
               <small>Created {new Date(token.createdAt).toLocaleString()} · Last used {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</small>
               <small>Expires {token.expiresAt ? new Date(token.expiresAt).toLocaleString() : "Never"}</small>
               {editingId === token._id && (
                 <form className="unit-token-edit" onSubmit={(event) => void updateToken(event)}>
-                  <label>Name<input required value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
-                  <label>Expires at<input type="datetime-local" min={toLocalDateTime(Date.now() + 60_000)} value={editExpiresAtInput} onChange={(event) => setEditExpiresAtInput(event.target.value)} /></label>
+                  <label>Name<Input required value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
+                  <label>Expires at<Suspense fallback={datePickerLoading}><DateTimePicker label="Token expiration" min={toLocalDateTime(Date.now() + 60_000)} value={editExpiresAtInput} onValueChange={setEditExpiresAtInput} disabled={saving} /></Suspense></label>
                   <button className="request-button" disabled={saving}>{saving ? "Saving…" : "Save token"}</button>
                   <button type="button" className="subtle-button" onClick={() => setEditingId(null)}>Cancel</button>
                 </form>
@@ -193,6 +211,7 @@ export function UnitTokensView() {
           ))}
         </div>
       ) : <div className="empty-editor"><b>No unit tokens</b><small>Create a token for a Unit or integration.</small></div>}
+      </div>
     </section>
   );
 }

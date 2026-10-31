@@ -1,3 +1,5 @@
+import { Input } from "./ui/Input";
+import { SelectField } from "./ui/SelectField";
 import { useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -164,22 +166,15 @@ function SignInForm({ serverProfile, onManageServers, onRememberAccount, onForge
             {accounts.length > 0 && (
               <label>
                 Saved account
-                <select
-                  value={selectedAccount}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSelectedAccount(value);
-                    setEmail(value === "__other__" ? "" : value);
-                  }}
-                >
-                  {accounts.map((account) => <option value={account} key={account}>{account}</option>)}
-                  <option value="__other__">Use another account…</option>
-                </select>
+                <SelectField label="Saved account" value={selectedAccount} onValueChange={value => {
+                  setSelectedAccount(value);
+                  setEmail(value === "__other__" ? "" : value);
+                }} options={[...accounts.map(account => ({ value: account, label: account })), { value: "__other__", label: "Use another account…" }]} />
               </label>
             )}
             <label>
               Email
-              <input
+              <Input
                 autoComplete="username"
                 type="email"
                 value={email}
@@ -193,7 +188,7 @@ function SignInForm({ serverProfile, onManageServers, onRememberAccount, onForge
             </label>
             <label>
               Password
-              <input
+              <Input
                 autoComplete="current-password"
                 type="password"
                 value={password}
@@ -204,7 +199,7 @@ function SignInForm({ serverProfile, onManageServers, onRememberAccount, onForge
             {activeFlow === "signUp" && (
               <label>
                 Confirm password
-                <input
+                <Input
                   autoComplete="new-password"
                   type="password"
                   value={confirmPassword}

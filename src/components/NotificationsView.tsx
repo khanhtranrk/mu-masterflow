@@ -62,30 +62,13 @@ export function NotificationsView() {
 
   return (
     <section className="editor-view notifications-view">
-      <div className="view-heading">
-        <div>
-          <span className="view-kicker">ACTIVITY</span>
-          <h2>Notifications</h2>
-          <p>Updates sent to MasterFlow by your workers.</p>
+      <header className="notifications-toolbar">
+        <h1>Notifications {notifications !== undefined && <span className="notification-unread-summary">{unreadCount} unread</span>}</h1>
+        <div className="notification-permission" title="System notifications are delivered when MasterFlow is not focused.">
+          <span>System notifications: <b>{permissionGranted === null ? "Checking…" : permissionGranted ? "Enabled" : "Off"}</b></span>
+          {permissionGranted === false && <button className="subtle-button" onClick={() => void enableNotifications()}>Enable</button>}
         </div>
-        <span className="notification-unread-summary">{unreadCount} unread</span>
-      </div>
-
-      <div className="notification-permission">
-        <div>
-          <b>System notifications</b>
-          <p>{permissionGranted === null
-            ? "Checking permission…"
-            : permissionGranted
-              ? "Enabled when MasterFlow is not focused."
-              : "Allow notifications to receive worker updates when MasterFlow is not focused."}</p>
-        </div>
-        {permissionGranted !== true && (
-          <button className="subtle-button" onClick={() => void enableNotifications()}>
-            Enable
-          </button>
-        )}
-      </div>
+      </header>
 
       {error && <div className="inline-error">{error}<button onClick={() => setError("")}>×</button></div>}
       {notifications === undefined ? (

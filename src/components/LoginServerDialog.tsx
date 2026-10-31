@@ -1,3 +1,4 @@
+import { Input } from "./ui/Input";
 import { useEffect, useState } from "react";
 import {
   createConvexProfile,
@@ -166,15 +167,15 @@ export function LoginServerDialog({
             <div className="login-server-fields">
               <label>
                 Name
-                <input autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} placeholder="Local development" required />
+                <Input autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} placeholder="Local development" required />
               </label>
               <label>
                 Client/API URL
-                <input autoComplete="url" type="url" value={clientUrl} onChange={(event) => setClientUrl(event.target.value)} placeholder="http://127.0.0.1:3210" required />
+                <Input autoComplete="url" type="url" value={clientUrl} onChange={(event) => setClientUrl(event.target.value)} placeholder="http://127.0.0.1:3210" required />
               </label>
               <label>
                 HTTP site URL
-                <input autoComplete="url" type="url" value={siteUrl} onChange={(event) => setSiteUrl(event.target.value)} placeholder="http://127.0.0.1:3211" required />
+                <Input autoComplete="url" type="url" value={siteUrl} onChange={(event) => setSiteUrl(event.target.value)} placeholder="http://127.0.0.1:3211" required />
               </label>
             </div>
             <p className="login-server-help">Use the HTTP site URL for worker hooks. Admin keys are not required.</p>

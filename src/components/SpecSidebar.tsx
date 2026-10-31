@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { ActionMenu } from "./ui/ActionMenu";
 import type { SpecItem } from "../types";
 import "../sidebar-connection.css";
 
@@ -28,7 +27,6 @@ export function SpecSidebar({
   activeSpec,
   connected,
   appAvailable = true,
-  dark,
   serverName,
   specMenuSlug,
   notificationsActive,
@@ -42,30 +40,6 @@ export function SpecSidebar({
   onRename,
   onDelete,
 }: SpecSidebarProps) {
-  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
-
-  useEffect(() => {
-    if (!specMenuSlug) return;
-    const menuSlug = specMenuSlug;
-
-    function dismissMenu(event: PointerEvent) {
-      const target = event.target;
-      if (target instanceof Element && (target.closest(".space-menu") || target.closest(".space-menu-trigger"))) return;
-      onToggleMenu(menuSlug);
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onToggleMenu(menuSlug);
-    }
-
-    document.addEventListener("pointerdown", dismissMenu);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", dismissMenu);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [specMenuSlug, onToggleMenu]);
-
   return (
     <aside className="space-sidebar">
       <div className="desktop-brand">
@@ -90,28 +64,12 @@ export function SpecSidebar({
                 <span className={`space-mark ${spec.color}`}>{spec.name.slice(0, 1).toUpperCase()}</span>
                 <span className="space-name">{spec.name}</span>
               </button>
-              <button
-                className="space-menu-trigger"
-                aria-label={`Actions for ${spec.name}`}
-                title="Spec actions"
-                onClick={(event) => {
-                  const bounds = event.currentTarget.getBoundingClientRect();
-                  setMenuPosition({
-                    top: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 78)),
-                    right: Math.max(8, window.innerWidth - bounds.right + 3),
-                  });
-                  onToggleMenu(spec.slug);
-                }}
-              >
-                ···
-              </button>
-              {specMenuSlug === spec.slug && menuPosition && createPortal(
-                <div className={`space-menu ${dark ? "dark" : ""}`} style={menuPosition}>
-                  <button onClick={() => onRename(spec)}>Rename</button>
-                  <button className="danger" onClick={() => onDelete(spec)}>Archive spec</button>
-                </div>,
-                document.body,
-              )}
+              <ActionMenu open={specMenuSlug === spec.slug} onOpenChange={next => { if (next !== (specMenuSlug === spec.slug)) onToggleMenu(spec.slug); }} label={`Actions for ${spec.name}`}
+                trigger={<button className="space-menu-trigger" aria-label={`Actions for ${spec.name}`} title="Spec actions">···</button>}
+                actions={[
+                  { label: "Rename", onSelect: () => onRename(spec) },
+                  { label: "Archive spec", danger: true, separator: true, onSelect: () => onDelete(spec) },
+                ]} />
             </div>
           );
         })}

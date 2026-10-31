@@ -439,7 +439,7 @@ function App({
             onSignOut={() => void signOutAccount()}
           />
         ) : notificationsActive ? (
-          <div className="editor-scroll">
+          <div className="editor-scroll notifications-scroll">
             <NotificationsView />
             {error && <div className="inline-error">{error}<button onClick={() => setError("")}>×</button></div>}
           </div>
@@ -459,7 +459,7 @@ function App({
               requestCount={requests.length}
               onChange={(tab) => { setActiveTab(tab); setSelectedRequest(null); }}
             />
-            <div className={activeTab === "spec-yaml" ? "editor-scroll yaml-editor-area" : "editor-scroll"}>
+            <div className={activeTab === "spec-yaml" ? "editor-scroll yaml-editor-area" : activeTab === "requests" ? "editor-scroll requests-editor-area" : "editor-scroll overview-editor-area"}>
               {activeTab !== "spec-yaml" && (draftError || issues.length > 0) && <div className="spec-issues" role="alert">
                 <b>Spec needs attention</b>
                 <ul>{[...Object.values(editorErrors), ...issues].slice(0, 8).map((issue, index) => <li key={index}>{issue}</li>)}</ul>
@@ -467,7 +467,7 @@ function App({
                 <button className="subtle-button" onClick={() => setActiveTab("spec-yaml")}>Open Spec YAML</button>
               </div>}
 
-              {activeTab === "overview" && <SpecOverview document={parsed} stale={Boolean(draftError)} dirty={dirty} onOpenYaml={() => setActiveTab("spec-yaml")} />}
+              {activeTab === "overview" && <SpecOverview document={parsed} stale={Boolean(draftError)} onOpenYaml={() => setActiveTab("spec-yaml")} />}
               {activeTab === "spec-yaml" && (
                 <Suspense fallback={<div className="yaml-workspace" role="status">Loading YAML editor…</div>}>
                 <ConfigEditor
@@ -484,14 +484,14 @@ function App({
               )}
               {activeTab === "requests" && (
                 <RequestsView
+                  key={activeSpec._id}
                   pipelineNames={savedPipelineNames}
+                  pipelineCounts={Object.fromEntries(savedPipelineNames.map(name => [name, requests.filter(request => request.pipelineName === name).length]))}
                   currentPipelineName={requestPipelineName}
-                  canCreateRequest={Boolean(requestPipelineName)}
                   requests={visibleRequests}
                   pipelineNodes={activeRequestPipelineNodes}
                   selectedRequest={selectedRequest}
                   onSelectPipeline={setActivePipeline}
-                  onNewRequest={openRequestModal}
                   onEditRequest={openEditRequest}
                   onDuplicateRequest={duplicateRequest}
                   onDeleteRequest={deleteRequest}

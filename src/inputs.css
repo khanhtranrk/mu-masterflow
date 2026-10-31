@@ -1,0 +1,39 @@
+.desktop-shell .ui-input,.connection-page .ui-input,.connection-overlay .ui-input{min-width:0;min-height:36px;box-sizing:border-box;border:1px solid var(--line,#e8e8e6);border-radius:7px;background:var(--panel,#fff);color:var(--text,#202124);padding:8px 10px;font-size:12px;line-height:1.5;outline:none;color-scheme:light}
+.dark .ui-input{color-scheme:dark}
+.desktop-shell .ui-textarea:not(.code-editor),.connection-page .ui-textarea:not(.code-editor){box-sizing:border-box;min-width:0;width:100%;padding:10px 12px;border:1px solid var(--line,#e8e8e6);border-radius:8px;background:var(--panel,#fff);color:var(--text,#202124);font:inherit;font-size:13px;line-height:1.7;resize:vertical;outline:none}
+.ui-input::placeholder,.ui-textarea::placeholder{color:var(--muted,#777a80);opacity:.8}
+.desktop-shell .ui-input:focus,.connection-page .ui-input:focus,.connection-overlay .ui-input:focus,.desktop-shell .ui-textarea:focus{border-color:var(--accent,#6658ce);box-shadow:0 0 0 2px var(--accent-soft,#f0effd)}
+.ui-input:disabled,.ui-textarea:disabled{opacity:.55;cursor:not-allowed}
+.desktop-shell .ui-input[aria-invalid=true],.desktop-shell .ui-textarea[aria-invalid=true]{border-color:#ba5d56}
+.ui-input[type=number]{appearance:textfield;-moz-appearance:textfield}
+.ui-input::-webkit-inner-spin-button,.ui-input::-webkit-outer-spin-button{appearance:none;margin:0}
+.ui-input[hidden],.ui-file-input[hidden]{display:none}
+.desktop-shell input.ui-checkbox,.connection-page input.ui-checkbox,.connection-overlay input.ui-checkbox{appearance:none;display:inline-block;width:16px;min-width:16px;height:16px;min-height:16px;flex:none;vertical-align:middle;margin:0;padding:0;border:1px solid var(--line,#ccc);border-radius:4px;background:var(--panel,#fff);box-shadow:none;cursor:pointer}
+.desktop-shell input.ui-checkbox:checked,.connection-page input.ui-checkbox:checked,.connection-overlay input.ui-checkbox:checked{border-color:var(--accent,#6658ce);background-color:var(--accent,#6658ce);background-position:center;background-repeat:no-repeat;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m2.5 6 2.2 2.2L9.5 3.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+input.ui-checkbox:focus-visible{outline:2px solid var(--accent,#6658ce);outline-offset:3px}
+input.ui-checkbox:disabled{opacity:.45;cursor:not-allowed}
+.ui-file-input::file-selector-button{border:1px solid var(--line,#ccc);border-radius:6px;padding:6px 10px;margin-right:10px;background:var(--soft,#f8f8f7);color:var(--text,#202124);font:inherit;cursor:pointer}
+.ui-date-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-width:0;min-height:36px;padding:8px 10px;border:1px solid var(--line,#e8e8e6);border-radius:7px;background:var(--panel,#fff);color:var(--text,#202124);text-align:left;font-size:12px;line-height:1.5}
+.ui-date-trigger>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ui-date-trigger>svg{flex:none;color:var(--muted,#777a80)}
+.ui-date-trigger:focus-visible,.ui-date-trigger[data-state=open]{outline:2px solid var(--accent,#6658ce);outline-offset:2px}
+.ui-date-trigger:disabled{opacity:.5;cursor:not-allowed}
+.ui-date-popover{width:320px;max-width:calc(100vw - 16px);max-height:var(--radix-popover-content-available-height);overflow:auto;z-index:2100;padding:12px;border:1px solid var(--line,#e8e8e6);border-radius:10px;background:var(--panel,#fff);color:var(--text,#202124);box-shadow:0 8px 28px #0002;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.ui-date-popover .rdp-root{--rdp-accent-color:var(--accent);--rdp-accent-background-color:var(--accent-soft);--rdp-day-height:38px;--rdp-day-width:40px;--rdp-day_button-height:34px;--rdp-day_button-width:36px;--rdp-day_button-border-radius:6px;--rdp-nav_button-height:30px;--rdp-nav_button-width:28px;--rdp-nav-height:36px;font-size:12px}
+.ui-calendar-caption{display:flex;align-items:center;gap:6px;padding-right:64px;min-height:36px;margin-bottom:8px}
+.ui-calendar-caption .ui-select-trigger{font-size:11px;padding:0 7px;height:30px;gap:4px}
+.ui-date-popover .rdp-day_button{border:1px solid transparent;background:transparent;color:var(--text);font:inherit}
+.ui-date-popover .rdp-day_button:hover:not(:disabled){background:var(--soft)}
+.ui-date-popover .rdp-selected .rdp-day_button{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.ui-date-popover .rdp-day_button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ui-date-popover .rdp-weekday{font-size:10px;color:var(--muted)}
+.ui-date-popover .rdp-chevron{fill:var(--accent)}
+.ui-date-time{display:flex;align-items:center;gap:7px;border-top:1px solid var(--line);padding-top:12px;margin-top:10px;font-size:11px;color:var(--muted)}
+.ui-date-time>span:first-child{margin-right:auto}
+.ui-date-time .ui-select-trigger{min-width:58px;height:32px}
+.ui-date-actions{display:flex;align-items:center;gap:6px;margin-top:12px}
+.ui-date-actions button{min-height:32px;border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:var(--panel);color:var(--text);font:inherit;font-size:11px}
+.ui-date-actions button:first-child{margin-right:auto;color:var(--muted)}
+.ui-date-actions .ui-date-apply{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.ui-date-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ui-date-error{font-size:11px;line-height:1.6;color:#bc5a54;margin:10px 0 0}

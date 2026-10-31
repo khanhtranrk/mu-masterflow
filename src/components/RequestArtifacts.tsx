@@ -1,9 +1,11 @@
+import { Input } from "./ui/Input";
 import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { DisplayModeSwitch, useDisplayMode } from "../requestPresentation";
 import type { RequestItem } from "../types";
 
 type RequestArtifactsProps = {
@@ -18,6 +20,7 @@ type RequestArtifactsProps = {
 };
 
 export function RequestArtifacts({ request, open, onToggle, panelId, highlightedNode, highlightedIds, focusVersion, onClearHighlight }: RequestArtifactsProps) {
+  const [mode, setMode] = useDisplayMode("mu-masterflow:artifacts-layout", "grid");
   const urls = useQuery(api.requestArtifacts.urls, open ? { requestId: request.convexId as Id<"requests"> } : "skip");
   const start = useMutation(api.requestArtifacts.startUpload);
   const complete = useMutation(api.requestArtifacts.completeUpload);
@@ -29,7 +32,7 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
     if (!open || !highlightedNode) return;
     const first = body.current?.querySelector<HTMLElement>('[data-highlighted="true"]');
     first?.focus({ preventScroll: true });
-    (first ?? body.current)?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    (first ?? body.current)?.scrollIntoView({ block: "center", behavior: "instant" });
   }, [open, highlightedNode, focusVersion]);
 
   async function upload(file: File) {
@@ -59,11 +62,13 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
         <span aria-hidden="true">{open ? "⌄" : "›"}</span><b>Artifacts</b><span className="request-files-count">{request.artifacts?.length ?? 0}</span>
       </button>
       <button className="subtle-button" disabled={busy || (request.artifacts?.length ?? 0) >= 100} onClick={() => input.current?.click()}>{busy ? "Uploading…" : "Upload file"}</button>
-      <input ref={input} type="file" hidden disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
+      <Input ref={input} type="file" hidden disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
     </div>
     {error && <p role="alert">{error}</p>}
     <div id={panelId} hidden={!open} className="request-files-body" ref={body}>
     {highlightedNode && <div className="request-files-focus"><span role="status">{highlightedIds.length} {highlightedIds.length === 1 ? "artifact" : "artifacts"} highlighted · <b>{highlightedNode}</b></span><button className="subtle-button" onClick={onClearHighlight}>Clear highlight</button></div>}
+    <div className="artifact-layout-toolbar"><DisplayModeSwitch mode={mode} onChange={setMode} label="Artifact layout" /></div>
+    <div className={`artifact-items artifact-layout-${mode}`}>
     {!request.artifacts?.length && <small>No files attached to this request.</small>}
     {request.artifacts?.map(artifact => {
       const url = urls?.find(item => item.id === artifact.id)?.url;
@@ -79,6 +84,7 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
         }}>Download</a> : <small>{urls === undefined ? "Loading…" : "File unavailable"}</small>}
       </div>;
     })}
+    </div>
     </div>
   </section>;
 }

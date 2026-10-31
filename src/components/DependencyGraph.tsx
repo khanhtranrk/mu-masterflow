@@ -31,7 +31,7 @@ export function DependencyGraph({ nodes, selected, onSelect, nodeStates, readOnl
     const element = Array.from(viewport.current?.querySelectorAll<HTMLElement>(".graph-node") ?? []).find(node => node.dataset.node === selected);
     if (element && viewport.current) {
       const container = viewport.current;
-      container.scrollTo({ left: Math.max(0, element.offsetLeft - (container.clientWidth - element.offsetWidth) / 2), top: Math.max(0, element.offsetTop - (container.clientHeight - element.offsetHeight) / 2), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+      container.scrollTo({ left: Math.max(0, element.offsetLeft - (container.clientWidth - element.offsetWidth) / 2), top: Math.max(0, element.offsetTop - (container.clientHeight - element.offsetHeight) / 2), behavior: "instant" });
     }
   }, [selected, nodeStates === undefined]);
   const { positions, width, height } = layoutGraph(nodes);

@@ -1,3 +1,4 @@
+import { Input, Textarea } from "./ui/Input";
 import type { PipelineNode } from "../types";
 import { nodeDependencyNames } from "../specUtils";
 import { DependencyGraph } from "./DependencyGraph";
@@ -69,7 +70,7 @@ export function PipelineEditor({
                   <div className="dependency-checks">
                     {nodes.filter((node) => String(node.name) !== String(currentNode.name)).map((node) => (
                       <label key={String(node.name)}>
-                        <input
+                        <Input
                           type="checkbox"
                           checked={nodeDependencyNames(currentNode).includes(String(node.name))}
                           onChange={(event) => onToggleDependency(String(node.name), event.target.checked)}
@@ -80,7 +81,7 @@ export function PipelineEditor({
                   </div>
                   <label className="advanced-label node-yaml-label">
                     Full node definition
-                    <textarea aria-label="Full node definition" className="code-editor node-code" spellCheck={false} value={nodeDraft} onChange={(event) => onChangeNodeDraft(event.target.value)} />
+                    <Textarea aria-label="Full node definition" className="code-editor node-code" spellCheck={false} value={nodeDraft} onChange={(event) => onChangeNodeDraft(event.target.value)} />
                   </label>
                 </>
               ) : <div className="inspector-empty"><b>No node selected</b><small>Add nodes to make a pipeline graph.</small></div>}

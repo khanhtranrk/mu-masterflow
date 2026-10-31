@@ -1,3 +1,4 @@
+import { Input } from "./ui/Input";
 import { useState } from "react";
 import {
   createConvexProfile,
@@ -130,15 +131,15 @@ export function ServerSettingsPanel({
         <div className="server-profile-form-fields">
           <label>
             Name
-            <input autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} placeholder="Local development" required />
+            <Input autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} placeholder="Local development" required />
           </label>
           <label>
             Client/API URL
-            <input autoComplete="url" type="url" value={clientUrl} onChange={(event) => setClientUrl(event.target.value)} placeholder="http://127.0.0.1:3210" required />
+            <Input autoComplete="url" type="url" value={clientUrl} onChange={(event) => setClientUrl(event.target.value)} placeholder="http://127.0.0.1:3210" required />
           </label>
           <label>
             HTTP site URL
-            <input autoComplete="url" type="url" value={siteUrl} onChange={(event) => setSiteUrl(event.target.value)} placeholder="http://127.0.0.1:3211" required />
+            <Input autoComplete="url" type="url" value={siteUrl} onChange={(event) => setSiteUrl(event.target.value)} placeholder="http://127.0.0.1:3211" required />
           </label>
           <p className="server-profile-help">Self-hosted Convex typically uses port 3210 for API and 3211 for HTTP site. Admin keys are not needed.</p>
           <div className="server-profile-form-actions">

@@ -1,3 +1,4 @@
+import { Input } from "./ui/Input";
 import type { FormEvent, ChangeEvent } from "react";
 
 type SpecDialogsProps = {
@@ -31,14 +32,14 @@ function CreateDialog({ props }: { props: SpecDialogsProps }) {
         <h2>Create a spec</h2>
         <p>Create a spec from scratch or upload an existing spec.yaml.</p>
         <>
-            <label>Spec name<input name="name" autoFocus required value={specNameDraft} onChange={(event) => props.onSpecNameChange(event.target.value)} placeholder="e.g. Song with cover" /></label>
-            <label>Description<input name="description" placeholder="What does this spec do?" /></label>
+            <label>Spec name<Input name="name" autoFocus required value={specNameDraft} onChange={(event) => props.onSpecNameChange(event.target.value)} placeholder="e.g. Song with cover" /></label>
+            <label>Description<Input name="description" placeholder="What does this spec do?" /></label>
             <label className="spec-upload">
               Existing spec.yaml
               <span className="spec-upload-control">
                 <span className="upload-glyph">↑</span>
                 <span><b>{specUploadName || "Choose a YAML file"}</b><small>{specUploadName ? "This file will be saved as the spec." : "Upload .yaml or .yml from your computer"}</small></span>
-                <input name="specFile" type="file" accept=".yaml,.yml,application/yaml,text/yaml,text/plain" onChange={props.onSpecFileChange} />
+                <Input name="specFile" type="file" accept=".yaml,.yml,application/yaml,text/yaml,text/plain" onChange={props.onSpecFileChange} />
               </span>
             </label>
             <div className="form-hint">The uploaded YAML is validated and kept as the full spec. Pipeline params and nodes are available in the editor.</div>
@@ -64,7 +65,7 @@ function RenameDialog({ props }: { props: SpecDialogsProps }) {
         </div>
         <h2>Rename spec</h2>
         <p>Choose a new name for this spec.</p>
-        <label>Spec name<input autoFocus required value={props.renameDraft} onChange={(event) => props.onRenameChange(event.target.value)} /></label>
+        <label>Spec name<Input autoFocus required value={props.renameDraft} onChange={(event) => props.onRenameChange(event.target.value)} /></label>
         {props.error && <div className="form-error">{props.error}</div>}
         <div className="modal-actions">
           <button type="button" className="subtle-button" onClick={props.onCloseRename}>Cancel</button>

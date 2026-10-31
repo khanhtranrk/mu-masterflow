@@ -63,7 +63,7 @@
 
 .request-monitor-list { display: block; }
 .request-monitor-item + .request-monitor-item { margin-top: 14px; }
-.request-monitor-item { --request-state-color: var(--quiet); min-width: 0; border: 1px solid var(--line); border-left: 4px solid var(--request-state-color); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.request-monitor-item { --request-state-color: var(--quiet); min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
 .request-monitor-item[data-status=waiting] { --request-state-color: #c59635; }
 .request-monitor-item[data-status=possessed] { --request-state-color: #6094db; }
 .request-monitor-item[data-status=processing] { --request-state-color: #9580e6; }
@@ -89,13 +89,6 @@
 /* A compact disclosure menu keeps actions next to the request row. */
 .request-monitor-item { overflow: visible; }
 .request-actions-dropdown { position: relative; flex: none; }
-.request-actions-dropdown:has(.request-actions-menu) { z-index: 5; }
-.request-actions-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 160px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 8px 28px #0002; display: grid; gap: 2px; }
-.request-actions-menu button { border: 0; border-radius: 5px; padding: 9px 11px; background: transparent; color: var(--text); text-align: left; font-size: 12px; }
-.request-actions-menu button:hover:not(:disabled) { background: var(--soft); }
-.request-actions-menu button:disabled { opacity: .4; cursor: not-allowed; }
-.request-actions-menu .request-delete-action { color: #b94a43; border-top: 1px solid var(--line); border-radius: 0 0 5px 5px; margin-top: 3px; }
-.dark .request-actions-menu .request-delete-action { color: #ffa59e; }
 @media (max-width: 1050px) { .request-monitor-worker { display: none; } .request-monitor-progress { width: 150px; } .request-expand-button { gap: 12px; } }
 @media (max-width: 750px) { .request-expand-button { flex-wrap: wrap; padding: 14px 12px; } .request-monitor-title { flex-basis: calc(100% - 30px); } .request-monitor-progress { width: auto; flex: 1; } .request-expanded { padding: 12px; } }
 

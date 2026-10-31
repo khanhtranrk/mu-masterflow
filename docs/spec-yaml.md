@@ -36,7 +36,7 @@ This is a structural example only. Keep real spec conditions and commands intact
 
 ## UI graph behavior
 
-`DependencyGraph` derives nodes from the selected pipeline's `nodes` array and edges from each node's `depends_on`. In Overview, selecting a graph node opens its structured, read-only configuration inspector. In request details, it overlays `requests.nodeStates` on the graph defined by that request's spec pipeline. Selecting a node shows its status, reported device, artifacts, and logs.
+`DependencyGraph` derives nodes from the selected pipeline's `nodes` array and edges from each node's `depends_on`. In Overview, selecting a graph node opens its structured, read-only configuration inspector. In request details, it overlays `requests.nodeStates` on the graph defined by that request's spec pipeline. Selecting a node highlights it in the graph. Status and reported device appear directly on the node; its artifact count opens the shared artifact section.
 
 Runtime node statuses are `queue`, `running`, `failed`, and `succeeded`. Node states are keyed by node name; if a state is not reported, request detail shows it as not reported.
 
@@ -104,7 +104,7 @@ them instead of changing inputs that a worker may already be executing.
 
 ### Following request execution
 
-Requests appear as horizontal rows with status, creation time, node progress, and assigned worker. Expand each row independently to inspect its execution graph, node logs, and artifacts. Processing and possessed requests expand by default; opening another request never closes existing rows. Worker reports reactively update the graph and progress. Each expanded request has a collapsible Artifacts section. Clicking a node's artifact count opens that section and highlights its files in the shared request list; Clear highlight resets the emphasis. Each expanded request has its own Follow execution control, which centers on a failed node first, then a running node. Selecting a node pauses following. The row’s three-dot button opens a menu for editing waiting requests, duplicating, or deleting a request. Deleting does not stop an already running worker.
+Requests use the available workspace width. Switch between List rows and a responsive Grid of cards; the choice is remembered on this device. Both show status, pipeline, creation time, node progress, and assigned worker. In Grid, an expanded request spans the full row and moves subsequent cards to the next available row; collapsing restores its normal card width. Expand each row independently to inspect only its execution graph and artifacts. The expanded area has no summary header or node-detail/log panel. Processing and possessed requests expand by default and remain open when completed; opening another request never closes existing rows. Worker reports reactively update the graph and progress. Each expanded request has a collapsible Artifacts section. Clicking a node's artifact count opens that section and highlights its files in the shared request list; Clear highlight resets the emphasis. The graph initially focuses on a failed node first, then a running node. Selecting a node keeps focus on that node. The row’s three-dot button opens a menu for editing waiting requests, duplicating, or deleting a request. Deleting does not stop an already running worker.
 
 Requests can be deleted from the request details with confirmation. Deletion sets optional `requests.deletedAt` (Unix milliseconds) and preserves the record. It leaves the existing `status` unchanged; `deleted` is not a request status. Visibility and claim eligibility depend on `deletedAt`, independently of execution status. Deleted requests are excluded through indexes before list/inspection/claim limits and cannot be edited. Deletion is idempotent and does not cancel an already running worker; its reports remain accepted without clearing `deletedAt`.
 
@@ -123,3 +123,21 @@ issues with their field paths. Syntax entries navigate to their line and column;
 navigation waits for validation of the current draft. Escape or Close dismisses the
 panel. Validation banners above the editor are hidden in the YAML tab. Save still
 validates immediately and remains blocked for invalid drafts.
+
+### Live request updates and artifact layouts
+
+Worker reports update status colors, graph nodes, progress and artifacts immediately.
+Requests have no layout transitions, disclosure fades, border sweeps, moving graph
+edges, pulsing nodes or smooth auto-scroll. Hover remains a static whole-card cue.
+
+Artifact sections default to a responsive Grid, with a List option for long file
+names. Artifact layout is shared across expanded requests and remembered locally.
+Node artifact links still open the same shared request artifact section and
+highlight the relevant files. Upload/download behavior is unchanged.
+
+The Requests header is a compact toolbar: clickable pipeline tabs, each with a
+request-count badge, a short search field, status and List/Grid controls. Badges
+count all loaded requests for their pipeline, independently of search/status filters.
+While filtering, a separate filtered/total count appears beside the controls. It
+wraps into two rows for narrower windows. Request creation stays in the spec
+header; the content does not repeat the page title or creation button.

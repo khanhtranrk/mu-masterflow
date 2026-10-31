@@ -33,9 +33,7 @@ export function SettingsView({
     <div className="editor-scroll settings-scroll">
       <section className="settings-page" aria-labelledby="settings-title">
         <header className="settings-heading">
-          <p className="settings-eyebrow">MASTERFLOW</p>
           <h1 id="settings-title">Settings</h1>
-          <p>Manage your appearance and Convex connection.</p>
         </header>
 
         <section className="settings-section" aria-labelledby="appearance-title">
@@ -49,7 +47,7 @@ export function SettingsView({
           </button>
         </section>
 
-        <section className="settings-section settings-server-section" aria-labelledby="server-title">
+        <section className="settings-section settings-server-section" data-expanded={serverManagerExpanded} aria-labelledby="server-title">
           <div className="settings-section-copy">
             <h2 id="server-title">Convex server</h2>
             <p>{serverProfile ? "Connected server profile and endpoint." : "Choose a saved server or add a new connection."}</p>
@@ -77,7 +75,7 @@ export function SettingsView({
           )}
         </section>
 
-        {serverProfile && <section className="settings-section settings-unit-tokens" aria-labelledby="unit-tokens-title">
+        {serverProfile && <section className="settings-section settings-unit-tokens" data-expanded={unitTokensExpanded} aria-labelledby="unit-tokens-title">
           <div className="settings-section-copy">
             <h2 id="unit-tokens-title">Unit tokens</h2>
             <p>Manage Unit (Worker) and integration access to Convex HTTP hooks.</p>
@@ -85,11 +83,14 @@ export function SettingsView({
           <button
             className="settings-action"
             aria-expanded={unitTokensExpanded}
+            aria-controls="settings-unit-tokens-panel"
             onClick={() => setUnitTokensExpanded((expanded) => !expanded)}
           >
             {unitTokensExpanded ? "Hide unit tokens" : "Manage unit tokens"}
           </button>
-          {unitTokensExpanded && <UnitTokensView />}
+          <div className="settings-unit-token-panel" id="settings-unit-tokens-panel" hidden={!unitTokensExpanded}>
+            <UnitTokensView key={serverProfile.id} open={unitTokensExpanded} />
+          </div>
         </section>}
 
         {serverProfile && <section className="settings-section settings-account" aria-labelledby="account-title">
