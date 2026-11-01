@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as artifactLinks from "../artifactLinks.js";
 import type * as artifactMigration from "../artifactMigration.js";
 import type * as artifactModel from "../artifactModel.js";
 import type * as artifactStore from "../artifactStore.js";
@@ -35,6 +36,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  artifactLinks: typeof artifactLinks;
   artifactMigration: typeof artifactMigration;
   artifactModel: typeof artifactModel;
   artifactStore: typeof artifactStore;

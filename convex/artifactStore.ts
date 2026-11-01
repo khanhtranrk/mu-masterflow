@@ -106,7 +106,7 @@ export const finish = internalMutation({ args: { ...actor, uploadId: v.id("stora
   await ctx.db.patch(request._id, { artifacts, ...(request.nodeStates ? { nodeStates } : {}) });
   await ctx.db.patch(u._id, { completed: true }); return saved;
 } });
-export const resolve = internalQuery({ args: { ...actor, requestId: v.id("requests"), artifactId: v.string() }, returns: v.object(artifactFields), handler: async (ctx, args) => {
+export async function resolveArtifact(ctx: QueryCtx | MutationCtx, args: { requestId: Id<"requests">; artifactId: string; tokenId?: Id<"unitTokens">; assignmentVersion?: number }) {
   const { request } = await access(ctx, args.requestId, args.tokenId);
   if (args.tokenId && args.assignmentVersion !== request.assignmentVersion) throw new Error("Stale assignment");
   const row = await ctx.db.query("artifacts").withIndex("by_request_artifact", q => q.eq("requestId", args.requestId).eq("artifactId", args.artifactId)).unique();
@@ -115,4 +115,5 @@ export const resolve = internalQuery({ args: { ...actor, requestId: v.id("reques
   if (!legacy?.storageId) throw new Error("Artifact not found");
   const { id, ...metadata } = legacy;
   return { requestId: args.requestId, artifactId: id, handler: "convex-legacy" as const, metadata };
-} });
+}
+export const resolve = internalQuery({ args: { ...actor, requestId: v.id("requests"), artifactId: v.string() }, returns: v.object(artifactFields), handler: resolveArtifact });

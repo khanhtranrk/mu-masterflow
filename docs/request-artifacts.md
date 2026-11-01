@@ -55,6 +55,14 @@ Each artifact has a **View** button; **Download** is in its three-dot menu, alon
 
 Text/PDF data is fetched directly from storage in the browser, or through a bounded native client read in Tauri to avoid webview CORS restrictions. Native preview reads time out after 45 seconds. No preview bytes pass through Convex. Images and audio/video use the direct URL as a media source; playback depends on the webview's supported formats. Every preview URL uses the same backend authorization as a download.
 
+### Reuse an existing file
+
+The owner can choose **Link existing artifact** beside Upload file. Browse recent canonical artifacts, search by file name or exact source Request ID, preview a source, then choose a new artifact ID, filename and optional label/node for the current request. Results are paginated; use Load more when a page contains archived or older-run records that were excluded. Legacy snapshots need the metadata backfill before appearing in this picker.
+
+`artifactLinks.link` is an owner-only mutation. It rechecks both requests, source generation/creation timestamp, connection availability, target ID uniqueness (including tombstones) and the 100-artifact limit transactionally. Clients provide source request/artifact identifiers rather than an arbitrary object key. The new record snapshots the handler and source coordinates (`connectionId`/`objectKey`, or legacy `storageId`) and receives the target request's generation and independent display metadata. No bytes are read, uploaded or copied by linking.
+
+The resulting records are independent: replacing, resetting, archiving or deleting the original artifact/request does not redirect or delete the linked file. Removing any record retains the physical file. Disabling the shared connection stops future URL issuance for all its references. Resetting the target request hides its previous-generation artifacts as usual; linking does not change reset semantics. Workers cannot create links or browse sources; their existing assignment-scoped download access applies to linked artifacts in their own requests. No worker protocol change is required.
+
 For legacy Convex files, the desktop/web client resolves `/api/storage/…` through its selected Convex API origin. This avoids an obsolete advertised hostname when connecting to a self-hosted backend through a different address. S3 URLs are left unchanged because their signatures bind the storage hostname.
 
 Single uploads are limited to 5 GiB, also subject to provider/project limits. Multipart/resumable upload is not implemented in this version. Server-side copy and HEAD require provider permissions in addition to object GET/PUT. The SDK uses path-style addressing and only required checksums for compatibility.

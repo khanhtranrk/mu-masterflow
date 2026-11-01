@@ -196,3 +196,67 @@ test("HTTP hooks enforce active tokens, bound identity and the restricted reques
   await t.run(ctx => ctx.db.patch(tokenId, { unitId: undefined }));
   expect((await t.fetch('/api/units/heartbeat', { method: 'POST', headers, body: JSON.stringify({ unitId: 'unit-a', status: 'online', devices: [] }) })).status).toBe(400);
 });
+
+test("owner links independent S3 records to the same source; replacing/deleting the original cannot change the link", async () => {
+  const { t, owner, reader, requestId, otherTokenId } = await fixture();
+  const { sourceId, targetId } = await t.run(async ctx => {
+    const sourceId = await ctx.db.insert("artifacts", { requestId, artifactId: "source", handler: "s3", metadata: { connectionId: "r2-1", objectKey: "objects/original", name: "cover.png", contentType: "image/png", size: 123, createdAt: 10, nodeName: "source-node" } });
+    const targetId = await ctx.db.insert("requests", { specSlug: "demo", pipelineName: "main", status: "possessed", payload: {}, resetVersion: 3, unitId: "unit-b", assignedTokenId: otherTokenId, assignmentVersion: 1, nodeStates: { render: { status: "running" } } });
+    return { sourceId, targetId };
+  });
+  const args = { sourceRequestId: requestId, sourceArtifactId: "source", expectedSourceCreatedAt: 10, requestId: targetId, artifactId: "linked", name: "linked-cover.png", label: "Shared cover", nodeName: "render" };
+  await expect(reader.mutation(api.artifactLinks.link, args)).rejects.toThrow("owner");
+  await expect(t.mutation(api.artifactLinks.link, args)).rejects.toThrow();
+  await expect(owner.mutation(api.artifactLinks.link, { ...args, expectedSourceCreatedAt: 9 })).rejects.toThrow("changed");
+  const linked = await owner.mutation(api.artifactLinks.link, args);
+  expect(linked.objectKey).toBe("objects/original"); expect(linked.id).toBe("linked"); expect(linked.name).toBe("linked-cover.png");
+  const target = await t.run(ctx => ctx.db.get(targetId)); expect(target!.nodeStates!.render.artifacts).toEqual([linked]);
+  await expect(owner.mutation(api.artifactLinks.link, args)).rejects.toThrow("already exists");
+  await expect(t.query(internal.artifactStore.resolve, { requestId, artifactId: "source", tokenId: otherTokenId, assignmentVersion: 1 })).rejects.toThrow("assigned");
+  expect((await t.query(internal.artifactStore.resolve, { requestId: targetId, artifactId: "linked", tokenId: otherTokenId, assignmentVersion: 1 })).metadata.objectKey).toBe("objects/original");
+  await t.run(async ctx => { const row = await ctx.db.get(sourceId); await ctx.db.patch(sourceId, { metadata: { ...row!.metadata, objectKey: "objects/replacement", createdAt: 11 } }); });
+  await owner.mutation(api.artifactStore.remove, { requestId, artifactId: "source" });
+  const resolved = await owner.query(internal.artifactStore.resolve, { requestId: targetId, artifactId: "linked" });
+  expect(resolved.metadata.objectKey).toBe("objects/original"); expect(resolved.metadata.resetVersion).toBe(3);
+  await owner.mutation(api.artifactStore.remove, { requestId: targetId, artifactId: "linked" });
+  await expect(owner.mutation(api.artifactLinks.link, args)).rejects.toThrow();
+});
+
+test("legacy links share the stored file, respect target generations and browse never exposes stale/deleted sources", async () => {
+  const { t, owner, reader, requestId } = await fixture();
+  const storageId = await t.run(ctx => ctx.storage.store(new Blob(["shared content"])));
+  const targetId = await t.run(async ctx => {
+    await ctx.db.insert("artifacts", { requestId, artifactId: "legacy", handler: "convex-legacy", metadata: { storageId, name: "shared.txt", size: 14, contentType: "text/plain", createdAt: 10 } });
+    return ctx.db.insert("requests", { specSlug: "demo", pipelineName: "main", status: "waiting", payload: {}, resetVersion: 2 });
+  });
+  const args = { sourceRequestId: requestId, sourceArtifactId: "legacy", expectedSourceCreatedAt: 10, requestId: targetId, artifactId: "second" };
+  expect((await owner.mutation(api.artifactLinks.link, args)).storageId).toBe(storageId);
+  await expect(reader.query(api.artifactLinks.browse, { search: requestId, paginationOpts: { cursor: null, numItems: 20 } })).rejects.toThrow("owner");
+  expect((await owner.query(api.artifactLinks.browse, { search: requestId, paginationOpts: { cursor: null, numItems: 20 } })).page).toHaveLength(1);
+  await t.run(ctx => ctx.db.patch(requestId, { resetVersion: 1 }));
+  expect((await owner.query(api.artifactLinks.browse, { search: requestId, paginationOpts: { cursor: null, numItems: 20 } })).page).toHaveLength(0);
+  await expect(owner.mutation(api.artifactLinks.link, { ...args, artifactId: "stale" })).rejects.toThrow("not found");
+  await owner.mutation(api.artifactStore.remove, { requestId, artifactId: "legacy" });
+  expect((await owner.query(internal.artifactStore.resolve, { requestId: targetId, artifactId: "second" })).metadata.storageId).toBe(storageId);
+  await owner.mutation(api.artifactStore.remove, { requestId: targetId, artifactId: "second" });
+  expect(await t.run(ctx => ctx.storage.getUrl(storageId))).not.toBeNull();
+});
+
+test("linking refuses disabled storage, archived targets and per-request artifact overflow", async () => {
+  const { t, owner, requestId } = await fixture();
+  const targetId = await t.run(async ctx => {
+    await ctx.db.insert("artifacts", { requestId, artifactId: "source", handler: "s3", metadata: { connectionId: "r2-1", objectKey: "original", name: "x.txt", contentType: "text/plain", size: 1, createdAt: 1 } });
+    return ctx.db.insert("requests", { specSlug: "demo", pipelineName: "main", status: "waiting", payload: {} });
+  });
+  const args = { sourceRequestId: requestId, sourceArtifactId: "source", expectedSourceCreatedAt: 1, requestId: targetId, artifactId: "new" };
+  await owner.mutation(api.storage.configure, { connectionId: "r2-1", enabled: false });
+  await expect(owner.mutation(api.artifactLinks.link, args)).rejects.toThrow("disabled");
+  await owner.mutation(api.storage.configure, { connectionId: "r2-1", enabled: true });
+  await t.run(ctx => ctx.db.patch(targetId, { deletedAt: 1 }));
+  await expect(owner.mutation(api.artifactLinks.link, args)).rejects.toThrow("not found");
+  await t.run(async ctx => {
+    await ctx.db.patch(targetId, { deletedAt: undefined });
+    for (let i = 0; i < 100; i++) await ctx.db.insert("artifacts", { requestId: targetId, artifactId: `old-${i}`, handler: "s3", metadata: { connectionId: "r2-1", objectKey: "old", name: "x", contentType: "text/plain", size: 1, createdAt: 1 }, deletedAt: 1 });
+  });
+  await expect(owner.mutation(api.artifactLinks.link, args)).rejects.toThrow("limit");
+});

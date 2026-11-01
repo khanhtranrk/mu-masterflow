@@ -11,7 +11,8 @@ export default defineSchema({
     encryptedCredentials: v.string(), enabled: v.boolean(), createdAt: v.number(),
   }).index("by_connection", ["connectionId"]),
   artifacts: defineTable({ ...artifactFields, deletedAt: v.optional(v.number()) })
-    .index("by_request_artifact", ["requestId", "artifactId"]).index("by_connection", ["metadata.connectionId"]).index("by_handler", ["handler", "deletedAt"]),
+    .index("by_request_artifact", ["requestId", "artifactId"]).index("by_connection", ["metadata.connectionId"]).index("by_handler", ["handler", "deletedAt"])
+    .searchIndex("search_name", { searchField: "metadata.name", filterFields: ["deletedAt"] }),
   storageUploads: defineTable(uploadFields)
     .index("by_request", ["requestId"]).index("by_request_pending", ["requestId", "completed", "expiresAt"]),
   notifications: defineTable({

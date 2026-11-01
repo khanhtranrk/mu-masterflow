@@ -2,6 +2,7 @@ import { Input } from "./ui/Input";
 import { SelectField } from "./ui/SelectField";
 import { ActionMenu } from "./ui/ActionMenu";
 import { ArtifactPreview } from "./ArtifactPreview";
+import { LinkArtifactDialog } from "./LinkArtifactDialog";
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
@@ -38,9 +39,10 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadStatus, setDownloadStatus] = useState("");
   const [preview, setPreview] = useState<RequestArtifact | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
   const client = useConvex();
   const body = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (!open) setPreview(null); }, [open]);
+  useEffect(() => { if (!open) { setPreview(null); setLinkOpen(false); } }, [open]);
   useEffect(() => {
     if (!open || !highlightedNode) return;
     const first = body.current?.querySelector<HTMLElement>('[data-highlighted="true"]');
@@ -101,6 +103,7 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
         ]} />
         <DisplayModeSwitch mode={mode} onChange={setMode} label="Artifact layout" />
         <button className="subtle-button" disabled={busy || artifacts.length >= 100} onClick={() => input.current?.click()}>{busy ? "Uploading…" : "Upload file"}</button>
+        {storage?.isOwner && <button type="button" className="subtle-button" disabled={busy || artifacts.length >= 100} onClick={() => { if (!open) onToggle(); setLinkOpen(true); }}>Link existing artifact</button>}
       </div>
       <Input ref={input} type="file" hidden disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
     </div>
@@ -126,5 +129,6 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
     </div>
     </div>
     {preview && <ArtifactPreview key={preview.id} requestId={request.convexId} artifact={preview} onClose={() => setPreview(null)} />}
+    {linkOpen && storage?.isOwner && <LinkArtifactDialog requestId={request.convexId} onClose={() => setLinkOpen(false)} />}
   </section>;
 }
