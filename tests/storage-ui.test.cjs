@@ -13,6 +13,9 @@ function render(name, isOwner) {
   if (id === 'convex/react') return { useAction: () => async () => {}, useMutation: () => async () => {}, useQuery: ref => ref === 'storage:list' ? { isOwner, connections: [{ connectionId: 'r2-1', name: 'Media', provider: 'r2', bucket: 'private', enabled: true }] } : [] };
   if (id === '../../convex/_generated/api') return { api: refs };
   if (id === './ui/Input') return { Input: props => React.createElement('input',props) };
+  if (id === './ui/SelectField') return { SelectField: props => React.createElement('button', { role: 'combobox', 'aria-label': props.label }, props.value) };
+  if (id === './ui/ActionMenu') return { ActionMenu: props => props.trigger };
+  if (id.endsWith('.css')) return {};
   return require(id);
  },out);
  return renderToStaticMarkup(React.createElement(out[name]));

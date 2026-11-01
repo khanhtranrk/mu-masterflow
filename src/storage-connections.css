@@ -1,0 +1,32 @@
+.storage-manager{display:grid;gap:20px;min-width:0;container-type:inline-size;container-name:storage-manager}
+.storage-state{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.storage-connection-list{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.storage-connection-card{min-width:0;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:grid;gap:8px}
+.storage-connection-heading,.storage-connection-heading>div{display:flex;align-items:center;gap:8px;min-width:0}
+.storage-connection-heading{justify-content:space-between}
+.storage-connection-heading>div{flex-wrap:wrap}
+.storage-connection-heading b{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.storage-connection-card p{font-size:11px;color:var(--muted);margin:0;overflow-wrap:anywhere;line-height:1.6}
+.storage-connection-card code{font-size:10px;color:var(--muted);overflow-wrap:anywhere}
+.storage-default{padding:3px 7px;border-radius:10px;font-size:10px;background:var(--accent-soft);color:var(--accent)}
+.storage-connection-card .unit-token-status{font-size:10px}
+.storage-menu-trigger{flex:none;min-width:32px;min-height:30px;padding:0 7px}
+.storage-connection-form{display:grid;gap:18px;padding:18px;border:1px solid var(--line);border-radius:9px;background:var(--panel);min-width:0}
+.storage-form-heading{display:flex;align-items:start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.storage-form-heading h3{font-size:13px;margin:0 0 5px;font-weight:650}
+.storage-form-heading p,.storage-form-hint{font-size:11px;line-height:1.6;color:var(--muted);margin:0}
+.storage-form-section{border:0;padding:0;margin:0;min-width:0}
+.storage-form-section legend{padding:0;margin-bottom:12px;font-size:11px;font-weight:600;color:var(--text)}
+.storage-form-section+.storage-form-section{border-top:1px solid var(--line);padding-top:16px}
+.storage-form-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.storage-form-grid label{display:grid;gap:7px;min-width:0;font-size:11px;color:var(--muted)}
+.storage-form-grid .ui-input,.storage-form-grid .ui-select-trigger{width:100%}
+.storage-form-hint{margin-top:12px}
+.storage-form-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.storage-form-error{font-size:12px;line-height:1.6;padding:10px 12px;margin:0;border:1px solid var(--line);border-radius:7px;background:var(--soft);color:#b54740;overflow-wrap:anywhere}
+.dark .storage-form-error{color:#ef9b94}
+@container storage-manager (min-width:620px){.storage-connection-list{grid-template-columns:repeat(2,minmax(0,1fr))}.storage-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.storage-field-wide{grid-column:1 / -1}}
+.settings-storage-panel{grid-column:1 / -1;width:100%;min-width:0;padding-top:10px}
+.settings-page>.settings-storage{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.settings-storage-panel[hidden]{display:none}
+@container settings-workspace (max-width:480px){.settings-storage-panel{width:100%}}

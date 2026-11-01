@@ -68,3 +68,10 @@
   .unit-token-list,.unit-token-loading{grid-template-columns:repeat(2,minmax(0,1fr))}
   .unit-token-edit{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto;align-items:end}
 }
+
+.unit-token-form-fields,.unit-token-edit{gap:14px}
+.unit-token-form-actions{grid-column:1 / -1;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.unit-token-form-fields label,.unit-token-edit label{font-size:11px;gap:7px}
+.unit-token-form-fields .ui-input,.unit-token-edit .ui-input{width:100%;height:auto;min-height:36px;font-size:12px}
+.unit-token-form-fields .ui-date-trigger,.unit-token-edit .ui-date-trigger{width:100%}
+@container token-manager (min-width:650px){.unit-token-form-fields,.unit-token-edit{grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}}

@@ -177,11 +177,11 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
       <form className="auth-admin-card unit-token-create" onSubmit={(event) => void createToken(event)}>
         <div><b>Create unit token</b><p>Token plaintext is shown once. Save it in the Unit's secret configuration.</p></div>
         <div className="unit-token-form-fields">
-          <label>Allowed spec slugs<Input required value={specSlugsInput} onChange={event => setSpecSlugsInput(event.target.value)} placeholder="spec-a, spec-b" /></label>
-          <label>Worker unit ID<Input required value={unitId} onChange={event => setUnitId(event.target.value)} placeholder="Exact --unit-id used by this worker" /></label>
-          <label>Name<Input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Unit or integration" /></label>
+          <label>Allowed spec slugs<Input required disabled={saving} value={specSlugsInput} onChange={event => setSpecSlugsInput(event.target.value)} placeholder="spec-a, spec-b" /></label>
+          <label>Worker unit ID<Input required disabled={saving} value={unitId} onChange={event => setUnitId(event.target.value)} placeholder="Exact --unit-id used by this worker" /></label>
+          <label>Name<Input required disabled={saving} value={name} onChange={(event) => setName(event.target.value)} placeholder="Unit or integration" /></label>
           <label>Expires at <Suspense fallback={datePickerLoading}><DateTimePicker label="New token expiration" min={toLocalDateTime(Date.now() + 60_000)} value={expiresAtInput} onValueChange={setExpiresAtInput} disabled={saving} /></Suspense></label>
-          <button className="request-button" disabled={saving}>{saving ? "Creating…" : "Create token"}</button>
+          <div className="unit-token-form-actions"><button className="request-button" disabled={saving}>{saving ? "Creating…" : "Create token"}</button></div>
         </div>
       </form>
 
@@ -215,12 +215,11 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
               <small>Expires {token.expiresAt ? new Date(token.expiresAt).toLocaleString() : "Never"}</small>
               {editingId === token._id && (
                 <form className="unit-token-edit" onSubmit={(event) => void updateToken(event)}>
-                  <label>Allowed spec slugs<Input required value={editSpecSlugs} onChange={event => setEditSpecSlugs(event.target.value)} /></label>
-                  <label>Worker unit ID<Input required value={editUnitId} onChange={event => setEditUnitId(event.target.value)} /></label>
-                  <label>Name<Input required value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
+                  <label>Allowed spec slugs<Input required disabled={saving} value={editSpecSlugs} onChange={event => setEditSpecSlugs(event.target.value)} /></label>
+                  <label>Worker unit ID<Input required disabled={saving || Boolean(token.unitId)} value={editUnitId} onChange={event => setEditUnitId(event.target.value)} /></label>
+                  <label>Name<Input required disabled={saving} value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
                   <label>Expires at<Suspense fallback={datePickerLoading}><DateTimePicker label="Token expiration" min={toLocalDateTime(Date.now() + 60_000)} value={editExpiresAtInput} onValueChange={setEditExpiresAtInput} disabled={saving} /></Suspense></label>
-                  <button className="request-button" disabled={saving}>{saving ? "Saving…" : "Save token"}</button>
-                  <button type="button" className="subtle-button" onClick={() => setEditingId(null)}>Cancel</button>
+                  <div className="unit-token-form-actions"><button className="request-button" disabled={saving}>{saving ? "Saving…" : "Save token"}</button><button type="button" className="subtle-button" disabled={saving} onClick={() => setEditingId(null)}>Cancel</button></div>
                 </form>
               )}
             </article>

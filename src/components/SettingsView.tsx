@@ -28,6 +28,7 @@ export function SettingsView({
   onSignOut,
 }: SettingsViewProps) {
   const [unitTokensExpanded, setUnitTokensExpanded] = useState(false);
+  const [storageExpanded, setStorageExpanded] = useState(false);
   const [serverManagerExpanded, setServerManagerExpanded] = useState(serverProfile === null);
 
   return (
@@ -94,7 +95,11 @@ export function SettingsView({
           </div>
         </section>}
 
-        {serverProfile && <section className="settings-section"><StorageConnectionsView /></section>}
+        {serverProfile && <section className="settings-section settings-storage" data-expanded={storageExpanded} aria-labelledby="storage-title">
+          <div className="settings-section-copy"><h2 id="storage-title">Storage connections</h2><p>Manage private buckets and choose the default storage for artifacts.</p></div>
+          <button className="settings-action" aria-expanded={storageExpanded} aria-controls="settings-storage-panel" onClick={() => setStorageExpanded(expanded => !expanded)}>{storageExpanded ? "Hide storage" : "Manage storage"}</button>
+          <div className="settings-storage-panel" id="settings-storage-panel" hidden={!storageExpanded}><StorageConnectionsView key={serverProfile.id} open={storageExpanded} /></div>
+        </section>}
 
         {serverProfile && <section className="settings-section settings-account" aria-labelledby="account-title">
           <div className="settings-section-copy">
