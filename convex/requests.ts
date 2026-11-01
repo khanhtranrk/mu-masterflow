@@ -15,6 +15,39 @@ export const list = query({
   },
 });
 
+// Global, read-only activity feed; no spec or pipeline restriction.
+export const listActive = query({
+  args: {},
+  returns: v.object({
+    requests: v.array(v.object({
+      _id: v.id("requests"),
+      status: v.string(),
+      unitId: v.optional(v.string()),
+      claimedAt: v.optional(v.number()),
+      nodes: v.array(v.object({ name: v.string(), status: v.string() })),
+    })),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    await requireAuthenticated(ctx);
+    const groups = await Promise.all(["possessed", "processing"].map(status =>
+      ctx.db.query("requests")
+        .withIndex("by_status_deleted_at", q => q.eq("status", status).eq("deletedAt", undefined))
+        .take(501)
+    ));
+    return {
+      truncated: groups.some(group => group.length > 500),
+      requests: groups.flatMap(group => group.slice(0, 500)).map(request => ({
+        _id: request._id,
+        status: request.status,
+        ...(request.unitId !== undefined ? { unitId: request.unitId } : {}),
+        ...(request.claimedAt !== undefined ? { claimedAt: request.claimedAt } : {}),
+        nodes: Object.entries(request.nodeStates ?? {}).map(([name, node]) => ({ name, status: node.status })),
+      })),
+    };
+  },
+});
+
 // Idempotent soft deletion preserves payload and execution history.
 export const remove = mutation({
   args: { id: v.id("requests") },

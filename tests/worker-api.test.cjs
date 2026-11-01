@@ -458,3 +458,40 @@ test('scheduler node reasons are validated, stored and cleared on legacy state t
  assert.equal((await report({status:'succeeded'})).status,200);
  assert.equal(rows[0].nodeStates.render.reason,'');
 });
+
+test('activity spans specs, excludes deleted and inactive requests, and follows status changes', async () => {
+  const { rows, ctx, load } = setup();
+  rows.push(
+    { _id: 'a', specSlug: 'one', status: 'possessed', unitId: 'receiver', claimedAt: 42 },
+    { _id: 'b', specSlug: 'two', status: 'processing', nodeStates: {
+      first: { status: 'running', logs: ['private runtime detail'] },
+      second: { status: 'running' },
+    } },
+    { _id: 'deleted', status: 'processing', deletedAt: 1 },
+    ...['waiting', 'succeeded', 'process_failed', 'artifact_available', 'retrieve_artifact_failed'].map(status => ({ _id: status, status })),
+  );
+  const query = load('requests').listActive;
+  const before = JSON.stringify(rows);
+  const result = await query.handler(ctx, {});
+  assert.equal(result.truncated, false);
+  assert.deepEqual(result.requests, [
+    { _id: 'a', status: 'possessed', unitId: 'receiver', claimedAt: 42, nodes: [] },
+    { _id: 'b', status: 'processing', nodes: [{ name: 'first', status: 'running' }, { name: 'second', status: 'running' }] },
+  ]);
+  assert.equal(JSON.stringify(rows), before);
+  rows[0].status = 'succeeded';
+  rows[1].status = 'process_failed';
+  assert.deepEqual((await query.handler(ctx, {})).requests, []);
+  ctx.authenticated = false;
+  await assert.rejects(() => query.handler(ctx, {}), /Unauthenticated/);
+});
+
+test('activity reports truncation and excludes deleted requests before applying its limit', async () => {
+  const { rows, ctx, load } = setup();
+  for (let n = 0; n < 502; n++) rows.push({ _id: `deleted-${n}`, status: 'processing', deletedAt: 1 });
+  for (let n = 0; n < 501; n++) rows.push({ _id: `active-${n}`, status: 'processing' });
+  const result = await load('requests').listActive.handler(ctx, {});
+  assert.equal(result.truncated, true);
+  assert.equal(result.requests.length, 500);
+  assert.equal(result.requests[0]._id, 'active-0');
+});

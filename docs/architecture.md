@@ -72,9 +72,16 @@ The desktop edits a YAML draft. Pipeline editing changes only the selected pipel
 
 The UI creates a request with a chosen `pipelineName` and parameter `payload`. A worker heartbeat registers its current unit fields. `units.claim` atomically marks waiting requests `possessed`; the worker reports request and per-node states through the hook, persisted as `status` and `nodeStates`. Convex queries update the UI reactively.
 
+### Activity
+
+The sidebar's Activity page is a read-only, reactive view across all specs and pipelines. Units reuse `units.list` (the latest 200 registered units), with online units displayed first and status, devices, and last-seen time shown as stored. There is no presence timeout or inferred connectivity.
+
+`requests.listActive` uses the `by_status_deleted_at` index to fetch non-deleted `possessed` and `processing` requests globally. It returns only IDs, status, assigned unit, claim time, and node names/statuses; payloads, logs, and artifacts are omitted. Reads are bounded to 500 requests per status, with an explicit notice when truncated. Requests leave the view when their stored status changes out of the active set. The UI subscribes through Convex without polling or execution controls. Query errors appear within the affected section; missing backend functions show a synchronization hint rather than unmounting the desktop shell. Deploy the backend query and index to the connected server before using the new page.
+
 ## Frontend map
 
 - `src/App.tsx`: spec navigation/actions, spec editor, pipeline editor and graph, request list/details, runtime node-state overlay.
+- `src/components/ActivityView.tsx` and `src/activity.css`: unit and active-request monitoring.
 - `src/App.css`: base design and light/dark styling.
 - `src/graph.css`: dependency graph and per-node execution styles.
 - `src/space-actions.css`: sidebar spec actions.

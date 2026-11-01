@@ -11,6 +11,8 @@ type SpecSidebarProps = {
   dark: boolean;
   serverName: string;
   specMenuSlug: string | null;
+  activityActive?: boolean;
+  onOpenActivity?: () => void;
   notificationsActive: boolean;
   settingsActive: boolean;
   notificationCount: number;
@@ -31,6 +33,8 @@ export function SpecSidebar({
   appAvailable = true,
   serverName,
   specMenuSlug,
+  activityActive = false,
+  onOpenActivity,
   notificationsActive,
   settingsActive,
   notificationCount,
@@ -79,6 +83,9 @@ export function SpecSidebar({
       </div>
       {specs.length === 0 && <div className="sidebar-empty">{appAvailable ? "Create a spec to get started." : "Connect a server to load specs."}</div>}
       <div className="sidebar-bottom">
+        {appAvailable && <button className={`theme-button sidebar-utility-nav ${activityActive ? "selected" : ""}`} onClick={onOpenActivity}>
+          <span aria-hidden="true">◉</span> Activity
+        </button>}
         {appAvailable && <button className={`theme-button sidebar-utility-nav ${notificationsActive ? "selected" : ""}`} onClick={onOpenNotifications}>
           <span aria-hidden="true">♧</span> Notifications
           {notificationCount > 0 && <span className="sidebar-notification-count">{notificationCount > 99 ? "99+" : notificationCount}</span>}

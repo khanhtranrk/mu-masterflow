@@ -7,6 +7,7 @@ import "./spec-overview.css";
 const ConfigEditor = lazy(() => import("./components/ConfigEditor").then(module => ({ default: module.ConfigEditor })));
 import "./yaml-editor.css";
 import { RequestsView } from "./components/RequestsView";
+import { ActivityView } from "./components/ActivityView";
 import { NotificationsView } from "./components/NotificationsView";
 import { SettingsView } from "./components/SettingsView";
 import { SpecHeader, SectionTabs } from "./components/SpecHeader";
@@ -50,6 +51,7 @@ function App({
   onDisconnectServer,
 }: AppProps) {
   const [activeSpecSlug, setActiveSpecSlug] = useState("");
+  const [activityActive, setActivityActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
   const [settingsActive, setSettingsActive] = useState(false);
   const [incomingNotification, setIncomingNotification] = useState<{ title: string; message: string } | null>(null);
@@ -301,6 +303,7 @@ function App({
   }
 
   function openSpecModal() {
+    setActivityActive(false);
     setNotificationsActive(false);
     setSettingsActive(false);
     setError("");
@@ -362,6 +365,7 @@ function App({
 
   function openSpec(spec: SpecItem) {
     setActiveSpecSlug(spec.slug);
+    setActivityActive(false);
     setNotificationsActive(false);
     setSettingsActive(false);
     setActiveTab("requests");
@@ -369,6 +373,7 @@ function App({
   }
 
   function openNotifications() {
+    setActivityActive(false);
     setNotificationsActive(true);
     setSettingsActive(false);
     setModal(null);
@@ -378,6 +383,7 @@ function App({
 
   function openSettings() {
     setSettingsActive(true);
+    setActivityActive(false);
     setNotificationsActive(false);
     setModal(null);
     setError("");
@@ -449,11 +455,19 @@ function App({
       <SpecSidebar
         specs={specs}
         invalidSpecSlugs={invalidSavedSpecSlugs}
-        activeSpec={notificationsActive || settingsActive ? undefined : activeSpec}
+        activeSpec={activityActive || notificationsActive || settingsActive ? undefined : activeSpec}
         connected={connection.isWebSocketConnected}
         dark={darkMode}
         serverName={serverProfile.name}
         specMenuSlug={specMenuSlug}
+        activityActive={activityActive}
+        onOpenActivity={() => {
+          setActivityActive(true);
+          setNotificationsActive(false);
+          setSettingsActive(false);
+          setModal(null);
+          setError("");
+        }}
         notificationsActive={notificationsActive}
         settingsActive={settingsActive}
         notificationCount={unreadNotificationCount}
@@ -478,6 +492,8 @@ function App({
             onToggleTheme={() => void toggleTheme()}
             onSignOut={() => void signOutAccount()}
           />
+        ) : activityActive ? (
+          <ActivityView connected={connection.isWebSocketConnected} />
         ) : notificationsActive ? (
           <div className="editor-scroll notifications-scroll">
             <NotificationsView />

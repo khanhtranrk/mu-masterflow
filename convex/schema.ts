@@ -81,7 +81,8 @@ export default defineSchema({
   .index("by_spec_status_unit", ["specSlug", "status", "unitId", "deletedAt"])
   .index("by_spec_pipeline_unit", ["specSlug", "pipelineName", "unitId", "deletedAt"])
   .index("by_spec_status_pipeline_unit", ["specSlug", "status", "pipelineName", "unitId", "deletedAt"])
-  .index("by_status", ["status"]),
+  .index("by_status", ["status"])
+  .index("by_status_deleted_at", ["status", "deletedAt"]),
 
   units: defineTable({
     unitId: v.string(),
