@@ -2,9 +2,9 @@ import { Input } from "./ui/Input";
 import { SelectField } from "./ui/SelectField";
 import { ActionMenu } from "./ui/ActionMenu";
 import { useEffect, useRef, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
+import { artifactDownloadUrl } from "../artifactDownloads";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { DisplayModeSwitch, useDisplayMode } from "../requestPresentation";
@@ -34,6 +34,9 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const client = useConvex();
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open || !highlightedNode) return;
@@ -63,14 +66,25 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
   }
 
   async function downloadFile(artifactId: string) {
-    const popup = isTauri() ? null : window.open("about:blank", "_blank");
-    if (popup) popup.opener = null;
+    if (downloadingId) return;
+    setError(""); setDownloadStatus(""); setDownloadingId(artifactId);
+    let popup: Window | null = null;
     try {
+      const native = isTauri();
+      popup = native ? null : window.open("about:blank", "_blank");
+      if (popup) popup.opener = null;
       const result = await download({ requestId: request.convexId as Id<"requests">, artifactId });
-      if (isTauri()) await openUrl(result.url);
-      else if (popup) popup.location.href = result.url;
+      const url = artifactDownloadUrl(result, client.url);
+      if (native) {
+        setDownloadStatus("Choose where to save the file. The download starts after you confirm.");
+        const destination = await invoke<string | null>("download_artifact", { url, name: result.name, size: result.size });
+        setDownloadStatus(destination ? `Saved to ${destination}` : "Download cancelled.");
+      } else if (popup) { popup.location.href = url; setDownloadStatus("Download opened in a new tab."); }
       else throw new Error("Allow a new window to download the file.");
-    } catch (cause) { popup?.close(); setError(cause instanceof Error ? cause.message : "Download failed"); }
+    } catch (cause) {
+      popup?.close(); setDownloadStatus("");
+      setError(typeof cause === "string" ? cause : cause instanceof Error ? cause.message : "Download failed. Try again.");
+    } finally { setDownloadingId(null); }
   }
 
   return <section className="request-files" aria-label="Request artifacts">
@@ -88,6 +102,7 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
       <Input ref={input} type="file" hidden disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
     </div>
     {error && <p className="artifact-transfer-error" role="alert">{error}</p>}
+    {downloadStatus && <p className="artifact-download-status" role="status">{downloadStatus}</p>}
     <div id={panelId} hidden={!open} className="request-files-body" ref={body}>
     {highlightedNode && <div className="request-files-focus"><span role="status">{highlightedIds.length} {highlightedIds.length === 1 ? "artifact" : "artifacts"} highlighted · <b>{highlightedNode}</b></span><button className="subtle-button" onClick={onClearHighlight}>Clear highlight</button></div>}
     <div className={`artifact-items artifact-layout-${mode}`}>
@@ -97,7 +112,7 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
       return <div className={`request-artifact request-file ${highlighted ? "highlighted" : ""}`} key={artifact.id}
         data-highlighted={highlighted} tabIndex={-1} aria-label={`${artifact.label ?? artifact.name}${highlighted ? `, highlighted from ${highlightedNode}` : ""}`}>
         <div><b>{artifact.label ?? artifact.name}</b><small>{artifact.name} · {(artifact.size / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KiB{artifact.nodeName ? ` · ${artifact.nodeName}` : ""}</small></div>
-        <div className="artifact-file-actions"><button type="button" className="subtle-button" onClick={() => void downloadFile(artifact.id)}>Download</button>
+        <div className="artifact-file-actions"><button type="button" className="subtle-button" disabled={downloadingId !== null} onClick={() => void downloadFile(artifact.id)}>{downloadingId === artifact.id ? "Downloading…" : "Download"}</button>
         {storage?.isOwner && <ActionMenu label={`Actions for ${artifact.name}`} trigger={<button type="button" className="subtle-button" aria-label={`Actions for ${artifact.name}`}>•••</button>} actions={[{ label: "Remove record", danger: true, onSelect: () => { if (window.confirm("Remove this artifact record? The stored file will be retained.")) void remove({ requestId: request.convexId as Id<"requests">, artifactId: artifact.id }).catch(cause => setError(String(cause))); } }]} />}</div>
 
       </div>;

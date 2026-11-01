@@ -49,6 +49,10 @@ The declared SHA-256 is not treated as independently verified integrity: HEAD/ET
 
 Presigned PUTs last 15 minutes; GETs last 5 minutes. URLs are bearer capabilities reusable until expiry. Deleting a record, disabling a connection, signing out or revoking a token prevents future URL issuance, but does not revoke URLs already issued. Legacy URLs are not expiring and return `expiresAt: null, legacy: true`.
 
+The Tauri Download button opens a native save dialog and streams storage bytes directly into a local temporary file, checking the expected byte count before replacing the selected destination. Cancellation, storage errors and successful saves are shown in the artifact panel. No system browser is required. Restart/rebuild the native app after adding this command; a frontend reload alone cannot install Rust commands. Web downloads continue opening the issued URL in a separate tab.
+
+For legacy Convex files, the desktop/web client resolves `/api/storage/…` through its selected Convex API origin. This avoids an obsolete advertised hostname when connecting to a self-hosted backend through a different address. S3 URLs are left unchanged because their signatures bind the storage hostname.
+
 Single uploads are limited to 5 GiB, also subject to provider/project limits. Multipart/resumable upload is not implemented in this version. Server-side copy and HEAD require provider permissions in addition to object GET/PUT. The SDK uses path-style addressing and only required checksums for compatibility.
 
 ## Owner setup

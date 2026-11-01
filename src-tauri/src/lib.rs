@@ -1,6 +1,34 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_dialog::DialogExt;
+mod artifact_download;
+
+#[tauri::command]
+async fn download_artifact(
+    app: AppHandle,
+    url: String,
+    name: String,
+    size: u64,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let filename = name.replace(['/', '\\', '\0'], "_");
+        let mut dialog = app.dialog().file().set_file_name(filename);
+        if let Some(window) = app.get_webview_window("main") {
+            dialog = dialog.set_parent(&window);
+        }
+        let Some(selected) = dialog.blocking_save_file() else {
+            return Ok(None);
+        };
+        let destination = selected
+            .into_path()
+            .map_err(|_| "Choose a local destination file.")?;
+        artifact_download::save_url(&url, &destination, size)?;
+        Ok(Some(destination.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|_| "File download could not finish.".to_string())?
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -70,10 +98,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             load_connection_settings,
-            save_connection_settings
+            save_connection_settings,
+            download_artifact
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

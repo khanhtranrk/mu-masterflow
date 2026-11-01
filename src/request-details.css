@@ -122,3 +122,4 @@
 .artifact-transfer-error{margin:8px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--soft);color:#b54740;font-size:12px;line-height:1.6;overflow-wrap:anywhere}
 .dark .artifact-transfer-error{color:#ef9b94}
 @media(max-width:760px){.request-files-heading{flex-wrap:wrap}.request-files-heading-actions{flex:1 1 100%;justify-content:flex-start}.request-files-heading-actions .artifact-storage-select{flex:1;max-width:100%}}
+.artifact-download-status{padding:8px 12px;margin:0;color:var(--muted);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
