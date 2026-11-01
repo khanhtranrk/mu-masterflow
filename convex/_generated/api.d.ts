@@ -23,6 +23,7 @@ import type * as s3 from "../s3.js";
 import type * as specs from "../specs.js";
 import type * as storage from "../storage.js";
 import type * as storageModel from "../storageModel.js";
+import type * as transientQuery from "../transientQuery.js";
 import type * as unitTokens from "../unitTokens.js";
 import type * as units from "../units.js";
 import type * as workerAccess from "../workerAccess.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   specs: typeof specs;
   storage: typeof storage;
   storageModel: typeof storageModel;
+  transientQuery: typeof transientQuery;
   unitTokens: typeof unitTokens;
   units: typeof units;
   workerAccess: typeof workerAccess;

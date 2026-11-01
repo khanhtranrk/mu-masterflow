@@ -7,6 +7,7 @@ import { action, internalAction, type ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { client } from "./s3";
+import { retryDownloadQuery } from "./transientQuery";
 import { artifact, type Artifact } from "./artifactModel";
 const startArgs = { requestId: v.id("requests"), artifactId: v.string(), connectionId: v.optional(v.string()), size: v.number(), sha256: v.string(), contentType: v.optional(v.string()) };
 const uploadResult = v.object({ uploadId: v.id("storageUploads"), uploadUrl: v.string(), method: v.literal("PUT"), headers: v.record(v.string(), v.string()), expiresAt: v.number() });
@@ -52,14 +53,14 @@ async function complete(ctx: ActionCtx, args: { requestId: Id<"requests">; uploa
   } finally { s3.destroy(); }
 }
 async function download(ctx: ActionCtx, args: { requestId: Id<"requests">; artifactId: string; tokenId?: Id<"unitTokens">; assignmentVersion?: number }): Promise<Infer<typeof downloadResult>> {
-  const a = await ctx.runQuery(internal.artifactStore.resolve, args);
+  const a = await retryDownloadQuery(() => ctx.runQuery(internal.artifactStore.resolve, args));
   const m = a.metadata;
   if (a.handler === "convex-legacy") {
     const url = await ctx.storage.getUrl(m.storageId!);
     if (!url) throw new Error("Legacy file unavailable");
     return { url, expiresAt: null, name: m.name, contentType: m.contentType, size: m.size, legacy: true };
   }
-  const c = await ctx.runQuery(internal.storage.get, { connectionId: m.connectionId! });
+  const c = await retryDownloadQuery(() => ctx.runQuery(internal.storage.get, { connectionId: m.connectionId! }));
   if (!c?.enabled) throw new Error("Storage connection unavailable");
   const s3 = client(c);
   try {

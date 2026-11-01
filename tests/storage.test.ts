@@ -5,6 +5,7 @@ import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import { createHash } from "node:crypto";
 import { encrypt, decrypt } from "../convex/s3";
+import { retryDownloadQuery } from "../convex/transientQuery";
 
 const modules: Record<string, () => Promise<unknown>> = {};
 for (const f of readdirSync(new URL("../convex", import.meta.url))) if (f.endsWith(".ts") && !f.endsWith(".d.ts")) modules[`../convex/${f}`] = () => import(`../convex/${f}`);
@@ -31,6 +32,23 @@ async function fixture() {
   return { t, owner: t.withIdentity({ issuer, subject: "user_owner" }), reader: t.withIdentity({ issuer, subject: "user_reader" }), ...ids };
 }
 const sha256 = "a".repeat(64);
+
+test("download query retries transient failures, stays bounded and never retries authorization failures", async () => {
+  let attempts = 0; const delays: number[] = [];
+  const result = await retryDownloadQuery(async () => {
+    if (++attempts < 3) throw new Error("Transient error while running query");
+    return "resolved";
+  }, async ms => { delays.push(ms); });
+  expect(result).toBe("resolved"); expect(attempts).toBe(3); expect(delays).toEqual([200, 500]);
+  attempts = 0;
+  await expect(retryDownloadQuery(async () => { attempts++; throw new Error("Transient error while running query"); }, async () => {})).rejects.toThrow("server is temporarily unavailable");
+  expect(attempts).toBe(3);
+  for (const message of ["Unauthenticated", "Artifact not found", "Stale assignment", "Storage connection unavailable"]) {
+    attempts = 0;
+    await expect(retryDownloadQuery(async () => { attempts++; throw new Error(message); }, async () => {})).rejects.toThrow(message);
+    expect(attempts).toBe(1);
+  }
+});
 
 test("credentials use authenticated encryption bound to stable connection ID", () => {
   const c = { accessKeyId: "key", secretAccessKey: "secret" };
