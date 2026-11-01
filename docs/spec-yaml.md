@@ -208,6 +208,11 @@ isolated. `save_state` is supported by command, HTTP, inspect_file and execute_r
 `execute_workload` is not supported in node `finally`, pipeline `prepare`, or
 entry initialization/finalization.
 
+`send_http_request.header` accepts a YAML mapping or a whole-value template
+such as `"{actions[upload][body][headers]}"`. The worker resolves that template
+to a mapping at execution time; the editor cannot check its runtime value.
+Artifact uploads use this form to send the headers returned with the signed URL.
+
 Mu reserves the **maximum** workload `units` across all three main phases before
 any node action starts. Conditional/skipped workload calls still contribute to
 this maximum. The assigned GPU is held through `finally`; sequential workloads

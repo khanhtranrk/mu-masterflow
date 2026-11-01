@@ -54,7 +54,11 @@ export function specIssues(value: unknown): string[] {
       if (item.type === "execute_command" && (typeof item.target !== "string" || !item.target.trim())) fail(`${at}.target`, "expected a non-empty executable.");
       if (item.type === "send_http_request" && (typeof item.url !== "string" || !item.url.trim())) fail(`${at}.url`, "expected a non-empty URL.");
       if (["create_dir", "write_json"].includes(item.type) && (typeof item.path !== "string" || !item.path.trim())) fail(`${at}.path`, "expected a non-empty path.");
-      if (item.type === "send_http_request" && item.header !== undefined) mapping(item.header, `${at}.header`);
+      if (item.type === "send_http_request" && item.header !== undefined
+        && !isMapping(item.header)
+        && !(typeof item.header === "string" && /^\{[^{}]+\}$/.test(item.header))) {
+        fail(`${at}.header`, "expected a mapping or a whole-value template resolving to a mapping.");
+      }
       if (item.type === "send_http_request") {
         if ("body" in item && "body_file" in item) fail(at, "body and body_file are mutually exclusive.");
         for (const field of ["body_file", "response_file"]) {

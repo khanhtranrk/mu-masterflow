@@ -14,6 +14,18 @@ const { specIssues, nextName, renameNode, requestPayload } = load('specModel.ts'
 const { nodeDependencyNames, starterYaml } = load('specUtils.ts');
 const { parse } = require('yaml');
 
+test('HTTP headers accept mappings and whole-value templates used by signed artifact uploads', () => {
+  const spec = header => ({ routines: { upload_artifact: { actions: [
+    { type: 'send_http_request', url: '{actions[upload][body][uploadUrl]}', method: '{actions[upload][body][method]}', header, body_file: 'result.json' },
+  ] } } });
+  for (const header of [{ 'Content-Type': 'application/json' }, {}, '{actions[upload][body][headers]}', '{params[headers]}']) {
+    assert.deepEqual(specIssues(spec(header)), []);
+  }
+  for (const header of [null, [], 123, '', 'Content-Type: application/json', 'prefix {actions[upload][body][headers]}']) {
+    assert.ok(specIssues(spec(header)).some(issue => issue.startsWith('routines.upload_artifact.actions[0].header:')));
+  }
+});
+
 test('starter and current entry/pipeline/workload fields match the frontend contract', () => {
   assert.deepEqual(specIssues(parse(starterYaml)), []);
   assert.deepEqual(specIssues({entries: {master_flow: {initialization: [], finalization: []}}, workloads: {demo: {target: 'python', args: ['--version'], units: 0}}, pipeline: {main: {prepare: [], params: {width: {type: 'number', default: 1024}}, context: {}, nodes: [{name: 'demo', run: [{type: 'execute_workload', workload: 'demo', args: {}}]}]}}}), []);
