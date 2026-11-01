@@ -2,7 +2,7 @@
 
 This reference describes worker integration with MasterFlow, based on the router in [`convex/http.ts`](../convex/http.ts) and its underlying queries and mutations.
 
-Worker routes use the **`/api/`** prefix. The previous `/hooks/` prefix has been replaced without compatibility aliases. Update worker URLs when deploying this backend version. Convex Auth routes remain unchanged.
+Worker routes use the **`/api/`** prefix. The previous `/hooks/` prefix has been replaced without compatibility aliases. Update worker URLs when deploying this backend version. User authentication uses Clerk JWT verification separately from these worker routes.
 
 ## 1. Connection and authentication
 
@@ -21,7 +21,7 @@ The examples use `Host: localhost:3211`. Replace the host, `<UNIT_TOKEN>`, `<REQ
 
 ### Unit token
 
-Create a token in **Settings → Unit tokens** in the desktop app. After Convex Auth sign-in, the desktop calls `unitTokens.list`, `unitTokens.create`, `unitTokens.update`, and `unitTokens.revoke` through the Convex client. There is no worker HTTP endpoint for token management, and workers do not need an admin key.
+Create a token in **Settings → Unit tokens** in the desktop app. After Clerk sign-in and backend whitelist authorization, the desktop calls `unitTokens.list`, `unitTokens.create`, `unitTokens.update`, and `unitTokens.revoke` through the Convex client. There is no worker HTTP endpoint for token management, and workers do not need an admin key.
 
 The browser generates a random 256-bit token, sends its SHA-256 hash to the backend, and displays the plaintext once. Keep the plaintext in the worker's secret configuration; never put it in source code, logs, or documentation. Authenticated deployment users share token management access.
 

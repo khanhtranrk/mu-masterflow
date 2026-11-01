@@ -52,9 +52,9 @@ The backend auth config has no providers when the issuer is missing, so it fails
 4. Verify sign-out, token refresh, switching server profiles (including a server denying the same account), restart/session persistence, and backend reconnection. Backend access status gates rendering of business data.
 5. Verify worker authentication, notifications, request create/claim/report and artifact roundtrip with an existing worker token. Desktop upload receipts use Clerk subject for ownership: receipts started with old Convex user IDs cannot be completed by the new identity and must be restarted; completed files stay available.
 6. Test both browser and a packaged Tauri app. SignIn uses hash routing for the desktop shell. Production webview origin/session behavior is a separate release gate; a working Vite login is not evidence of a working packaged app. Configure supported origins for the actual deployment and verify the chosen sign-in method before enabling social redirects. Clerk points Tauri users to a community integration; do not assume React webview behavior alone covers every native platform.
-7. After confirming real Clerk/Convex access, remove the old auth runtime, `authTables` declarations and `@convex-dev/auth` dependency (completed on the development deployment). Decide separately when to delete old auth records and remove old `JWT_PRIVATE_KEY`/`JWKS` deployment variables after the rollback window. Removing schema declarations is not a data-erasure procedure. Packaged Tauri testing remains a separate desktop release gate.
+7. After confirming real Clerk/Convex access, remove the old auth runtime, `authTables` declarations and `@convex-dev/auth` dependency (completed on the development deployment). The development cleanup subsequently deleted the old auth tables and unused auth deployment variables at the user’s request. Removing schema declarations is not a data-erasure procedure. Packaged Tauri testing remains a separate desktop release gate.
 
-Rollback: restore both backend and frontend to the checkpoint before this migration. Restore the old issuer configuration/code and retain the original Convex Auth signing variables/tables until verification is complete. Do not roll back business-data writes or worker-token changes made since cutover. Users must sign in again if sessions are unavailable; passwords are not migrated into Clerk.
+Rollback: the old auth tables, account records and signing variables have been permanently removed from development. Restoring code alone cannot restore old accounts or sessions. Prefer fixing Clerk configuration; returning to Convex Auth requires new signing keys and account setup (or a separately available backup). Do not roll back business-data writes or worker-token changes. Passwords were not migrated into Clerk.
 
 ## Local checks
 
@@ -74,3 +74,11 @@ The configured self-hosted development backend accepted Clerk login after the Co
 Deployed policy probes via CLI-injected identities allowed the whitelisted ID and verified email; rejected unverified email, an unknown subject and a wrong issuer; and rejected a direct business query for a non-whitelisted caller. These policy probes bypass JWT verification and are not cryptographic tests. Unauthenticated business access was refused, `/api/health` returned 200 and a worker endpoint without its token returned 401. Automated worker regression tests cover valid worker tokens and artifact behavior.
 
 Packaged Tauri sign-in, real expired/wrong-audience JWTs, and a full manual multi-account/sign-out/server-switch exercise have not been verified. Email-only access was tested with injected identities; verify the configured Clerk email claims with a real email-only account before relying on that path operationally. The current user's ID match works independently of email claims.
+
+## Removal of development auth residue (2026-11-01)
+
+Deleted obsolete tables: `users`, `authAccounts`, `authSessions`, `authRefreshTokens`, `authVerificationCodes`, `authVerifiers`, `authRateLimits`.
+
+Removed deployment variables: `JWT_PRIVATE_KEY`, `JWKS`, `SITE_URL`, `AUTH_TOKENS_ADMIN_KEY`. The last variable belonged to the retired HTTP token-administration API, not worker bearer authentication. Clerk issuer and whitelist variables remain. Convex platform origins, CLI admin credentials and frontend endpoint/key configuration remain necessary.
+
+The backend was found serving older Convex Auth modules despite the current checkout using Clerk. The current Clerk implementation was synchronized before deleting tables, because the old deployed schema prevented their removal. Application tables, worker tokens and file-storage metadata were compared before/after the deletion.
