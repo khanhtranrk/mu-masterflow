@@ -159,7 +159,6 @@ export function ServerSettingsPanel({
         <div className="settings-card-list">
           {settings.profiles.map((profile) => {
             const active = profile.id === settings.activeProfileId;
-            const accounts = profile.accounts ?? [];
             return (
               <article className="settings-card server-profile-card" key={profile.id}>
                 <div className="settings-card-heading">
@@ -176,7 +175,6 @@ export function ServerSettingsPanel({
                 </div>
                 <small>Client/API · {profile.clientUrl}</small>
                 <small>HTTP site · {profile.siteUrl}</small>
-                {accounts.length > 0 && <small>{accounts.length} remembered account{accounts.length === 1 ? "" : "s"}</small>}
               </article>
             );
           })}

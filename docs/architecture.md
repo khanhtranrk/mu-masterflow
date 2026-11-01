@@ -112,7 +112,7 @@ Within Settings, the token manager stays mounted while collapsed, so its subscri
 
 Tauri commands `load_connection_settings` and `save_connection_settings` persist profile metadata under the platform app config directory. They store endpoint URLs only; CLI admin credentials remain in the developer's environment and are not part of desktop settings.
 
-Clerk verification uses `CLERK_JWT_ISSUER_DOMAIN`; backend policy uses `AUTH_ALLOWED_USER_IDS` and `AUTH_ALLOWED_EMAILS` (JSON arrays). The frontend contains only `VITE_CLERK_PUBLISHABLE_KEY`, never a secret/admin key. Legacy Convex Auth tables remain temporarily for rollback; no runtime authentication routes use them. See [migration cleanup](clerk-auth.md#verification-and-cleanup).
+Clerk verification uses `CLERK_JWT_ISSUER_DOMAIN`; backend policy uses `AUTH_ALLOWED_USER_IDS` and `AUTH_ALLOWED_EMAILS` (JSON arrays). The frontend contains only `VITE_CLERK_PUBLISHABLE_KEY`, never a secret/admin key. Legacy Convex Auth code, schema declarations and dependencies have been removed; old database records and signing variables remain for rollback. See [migration cleanup](clerk-auth.md#verification-and-cleanup).
 
 ## Runtime node states
 

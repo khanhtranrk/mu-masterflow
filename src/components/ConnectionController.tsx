@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ConvexReactClient } from "convex/react";
 import {
   loadConnectionSettings,
-  normalizeAccountEmail,
   saveConnectionSettings,
   type ConnectionSettings,
   type ConvexServerProfile,
@@ -16,8 +15,6 @@ type ConnectionControllerProps = {
     client: ConvexReactClient,
     profile: ConvexServerProfile,
     onManageServers: () => void,
-    onRememberAccount: (email: string) => Promise<void>,
-    onForgetAccount: (email: string) => Promise<void>,
     darkMode: boolean,
     onSetDarkMode: (darkMode: boolean) => Promise<void>,
     settings: ConnectionSettings,
@@ -91,40 +88,6 @@ export function ConnectionController({ children }: ConnectionControllerProps) {
     if (wasConnected && !next.activeProfileId) setClient(null);
   }, []);
 
-  const rememberAccount = useCallback(async (profileId: string, email: string) => {
-    const current = settingsRef.current;
-    if (!current) throw new Error("Server settings are still loading.");
-    const normalizedEmail = normalizeAccountEmail(email);
-    if (!normalizedEmail) throw new Error("Enter a valid email address.");
-    const profile = current.profiles.find((item) => item.id === profileId);
-    if (!profile) throw new Error("The selected Convex server no longer exists.");
-    const accounts = profile.accounts ?? [];
-    if (accounts.some((account) => normalizeAccountEmail(account) === normalizedEmail)) return;
-    await persist({
-      ...current,
-      profiles: current.profiles.map((item) => item.id === profileId
-        ? { ...item, accounts: [...accounts, normalizedEmail] }
-        : item),
-    });
-  }, [persist]);
-
-  const forgetAccount = useCallback(async (profileId: string, email: string) => {
-    const current = settingsRef.current;
-    if (!current) throw new Error("Server settings are still loading.");
-    const normalizedEmail = normalizeAccountEmail(email);
-    await persist({
-      ...current,
-      profiles: current.profiles.map((profile) => profile.id === profileId
-        ? {
-            ...profile,
-            accounts: (profile.accounts ?? []).filter(
-              (account) => normalizeAccountEmail(account) !== normalizedEmail,
-            ),
-          }
-        : profile),
-    });
-  }, [persist]);
-
   const setDarkMode = useCallback(async (darkMode: boolean) => {
     const current = settingsRef.current;
     if (!current) throw new Error("Server settings are still loading.");
@@ -185,8 +148,6 @@ export function ConnectionController({ children }: ConnectionControllerProps) {
         client,
         activeProfile,
         () => setManagerOpen(true),
-        (email) => rememberAccount(activeProfile.id, email),
-        (email) => forgetAccount(activeProfile.id, email),
         settings.darkMode ?? false,
         setDarkMode,
         settings,

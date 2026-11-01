@@ -52,7 +52,7 @@ The backend auth config has no providers when the issuer is missing, so it fails
 4. Verify sign-out, token refresh, switching server profiles (including a server denying the same account), restart/session persistence, and backend reconnection. Backend access status gates rendering of business data.
 5. Verify worker authentication, notifications, request create/claim/report and artifact roundtrip with an existing worker token. Desktop upload receipts use Clerk subject for ownership: receipts started with old Convex user IDs cannot be completed by the new identity and must be restarted; completed files stay available.
 6. Test both browser and a packaged Tauri app. SignIn uses hash routing for the desktop shell. Production webview origin/session behavior is a separate release gate; a working Vite login is not evidence of a working packaged app. Configure supported origins for the actual deployment and verify the chosen sign-in method before enabling social redirects. Clerk points Tauri users to a community integration; do not assume React webview behavior alone covers every native platform.
-7. Once real Clerk/Convex and Tauri verification passes, remove `authTables` from `schema.ts` and remove `@convex-dev/auth`. Retained auth tables currently serve rollback only; password auth exports and HTTP routes are already removed. Decide separately when to delete old auth records and remove old `JWT_PRIVATE_KEY`/`JWKS` deployment variables after the rollback window. Removing schema declarations is not a data-erasure procedure.
+7. After confirming real Clerk/Convex access, remove the old auth runtime, `authTables` declarations and `@convex-dev/auth` dependency (completed on the development deployment). Decide separately when to delete old auth records and remove old `JWT_PRIVATE_KEY`/`JWKS` deployment variables after the rollback window. Removing schema declarations is not a data-erasure procedure. Packaged Tauri testing remains a separate desktop release gate.
 
 Rollback: restore both backend and frontend to the checkpoint before this migration. Restore the old issuer configuration/code and retain the original Convex Auth signing variables/tables until verification is complete. Do not roll back business-data writes or worker-token changes made since cutover. Users must sign in again if sessions are unavailable; passwords are not migrated into Clerk.
 
@@ -66,3 +66,11 @@ node --test tests/authz.test.cjs tests/authenticated-root.test.cjs tests/worker-
 ```
 
 These checks verify policy logic, UI gating and worker regressions. They do not prove JWT cryptography, Clerk configuration, live deployment behavior or packaged Tauri authentication.
+
+## Development verification (2026-11-01)
+
+The configured self-hosted development backend accepted Clerk login after the Convex integration was enabled in Clerk. The user confirmed that specs appeared. Backend logs independently showed successful `auth:access`, `specs:list`, `requests:list`, `notifications:list`, `unitTokens:list`, `units:list` and `requests:listActive` executions from the running frontend.
+
+Deployed policy probes via CLI-injected identities allowed the whitelisted ID and verified email; rejected unverified email, an unknown subject and a wrong issuer; and rejected a direct business query for a non-whitelisted caller. These policy probes bypass JWT verification and are not cryptographic tests. Unauthenticated business access was refused, `/api/health` returned 200 and a worker endpoint without its token returned 401. Automated worker regression tests cover valid worker tokens and artifact behavior.
+
+Packaged Tauri sign-in, real expired/wrong-audience JWTs, and a full manual multi-account/sign-out/server-switch exercise have not been verified. Email-only access was tested with injected identities; verify the configured Clerk email claims with a real email-only account before relying on that path operationally. The current user's ID match works independently of email claims.

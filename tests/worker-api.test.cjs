@@ -28,7 +28,6 @@ function setup() {
     const localRequire = id => {
       if (id === './_generated/server') return new Proxy({}, { get: () => value => value });
       if (id === './_generated/api') return { internal: refs };
-      if (id === './auth') return { auth: { addHttpRoutes() {} } };
       if (id === './authz') return { requireAuthenticated(ctx) { if (ctx.authenticated === false) throw new Error('Unauthenticated'); return 'test-user'; } };
       if (id === 'convex/server') return { httpRouter: () => ({ route: r => routes.push(r) }) };
       if (id.startsWith('./')) return load(id.slice(2));

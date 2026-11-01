@@ -5,6 +5,7 @@ export type ConvexServerProfile = {
   name: string;
   clientUrl: string;
   siteUrl: string;
+  /** Legacy profile metadata retained for settings-file compatibility. Clerk owns sessions. */
   accounts?: string[];
 };
 
@@ -70,10 +71,6 @@ export async function saveConnectionSettings(settings: ConnectionSettings): Prom
     return;
   }
   window.localStorage.setItem(browserStorageKey, JSON.stringify(settings));
-}
-
-export function normalizeAccountEmail(email: string): string {
-  return email.trim().toLowerCase();
 }
 
 export function createConvexProfile(input: Omit<ConvexServerProfile, "id">): ConvexServerProfile {

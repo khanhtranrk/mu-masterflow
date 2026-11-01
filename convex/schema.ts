@@ -1,12 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { artifact } from "./artifactModel";
-import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
-  // Retained for rollback until live Clerk/Tauri verification. No runtime uses these tables.
-  ...authTables,
-
   notifications: defineTable({
     title: v.string(),
     message: v.string(),

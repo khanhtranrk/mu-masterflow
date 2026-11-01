@@ -9,7 +9,7 @@ import "./index.css";
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ConnectionController>
-      {(client, profile, onManageServers, _onRememberAccount, _onForgetAccount, darkMode, onSetDarkMode, serverSettings, onSaveServerSettings, onConnectServer, onDisconnectServer) => (
+      {(client, profile, onManageServers, darkMode, onSetDarkMode, serverSettings, onSaveServerSettings, onConnectServer, onDisconnectServer) => (
         <ClerkConnection client={client} profileKey={`${profile.id}:${profile.clientUrl}`}>
           <AuthenticatedRoot
             serverProfile={profile}
