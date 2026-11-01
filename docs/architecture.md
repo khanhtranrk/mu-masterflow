@@ -20,7 +20,7 @@ The app is a Tauri v2 desktop shell around a web frontend. Convex is the shared 
 
 The connection controller loads server profiles and the saved appearance preference before mounting the Convex Auth provider. Tauri stores profile names, endpoint URLs, remembered account emails, and the dark-mode flag in its app config directory; browser preview uses local storage. A profile stores separate client/API and HTTP site URLs. Signing out of a user account preserves the selected server; disconnecting clears only the active selection, keeps all profiles, and leaves the Settings workspace visible so another server can be selected. Removing a profile is a separate action. The app does not store a Convex admin key. Account, appearance, server, and Unit-token management are grouped in the Settings page. The login screen uses its own server-selection dialog, while Settings uses an inline server panel.
 
-The desktop supports email/password sign-in and registration of the first account on a deployment. Public app queries and mutations call a shared authentication guard; calls without a Convex Auth user are rejected. The `createOrUpdateUser` mutation callback checks for an existing user and atomically rejects subsequent account creation, while a public status query only controls whether the UI offers registration. Remembered account emails belong to a local server profile, while passwords are never saved. Convex Auth session tokens are namespaced by deployment URL. The single account has access to all application data; there is no per-user ownership model. Worker HTTP hooks retain their separate bearer-token authorization. The sidebar displays the selected server name in a status-colored badge.
+The desktop uses Clerk for sign-in and session management. Convex verifies JWTs using the configured Clerk issuer with audience `convex`. Every public application query/mutation uses `requireAuthenticated`, which checks the issuer and deployment whitelist: exact Clerk User ID OR exact verified primary email. Empty/malformed policy denies access. All allowed accounts share the existing application data; no per-user ownership is introduced. `auth.access` reports only the caller's access status for the frontend gate. Worker HTTP hooks retain their separate bearer-token authorization. Saved server profiles remain unchanged. See [Clerk authentication](clerk-auth.md).
 
 ## Tables
 
@@ -94,7 +94,7 @@ The sidebar's Activity page is a read-only, reactive view across all specs and p
 - `src/components/ServerSettingsPanel.tsx`: inline saved-server management in Settings.
 - `src/components/LoginServerDialog.tsx`: login-specific server selection and profile editor.
 - `src/components/DisconnectedRoot.tsx`: persistent workspace/settings shell for choosing a server while disconnected.
-- `src/components/AuthenticatedRoot.tsx`: authenticated-state gate, saved-account chooser, and password sign-in/sign-up UI.
+- `src/components/AuthenticatedRoot.tsx`: Clerk sign-in and backend access-status gate.
 
 ## Backend map
 
@@ -112,7 +112,7 @@ Within Settings, the token manager stays mounted while collapsed, so its subscri
 
 Tauri commands `load_connection_settings` and `save_connection_settings` persist profile metadata under the platform app config directory. They store endpoint URLs only; CLI admin credentials remain in the developer's environment and are not part of desktop settings.
 
-Convex Auth requires `JWT_PRIVATE_KEY` and `JWKS` on each deployment. `auth.config.ts` validates JWTs against that deployment's `CONVEX_SITE_URL`. Do not share signing keys across independently administered deployments.
+Clerk verification uses `CLERK_JWT_ISSUER_DOMAIN`; backend policy uses `AUTH_ALLOWED_USER_IDS` and `AUTH_ALLOWED_EMAILS` (JSON arrays). The frontend contains only `VITE_CLERK_PUBLISHABLE_KEY`, never a secret/admin key. Legacy Convex Auth tables remain temporarily for rollback; no runtime authentication routes use them. See [migration cleanup](clerk-auth.md#verification-and-cleanup).
 
 ## Runtime node states
 
@@ -145,7 +145,7 @@ without dense grid packing.
 ## Dropdown controls
 
 `src/components/ui/SelectField.tsx` wraps Radix Select for request status, request
-pipeline selection and remembered sign-in accounts. `ActionMenu.tsx` wraps Radix
+pipeline selection. Clerk manages sign-in account selection. `ActionMenu.tsx` wraps Radix
 Dropdown Menu for request and spec actions. Shared styles in `src/dropdowns.css`
 use application theme variables, not the OS dropdown palette. Content portals
 into the nearest themed app shell, stays outside scroll-clipped cards, and

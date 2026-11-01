@@ -1,10 +1,11 @@
-import { env } from "./_generated/server";
+import type { AuthConfig } from "convex/server";
+import { env as deploymentEnv } from "./_generated/server";
+
+const env = deploymentEnv as unknown as Record<string, string | undefined>;
 
 export default {
-  providers: [
-    {
-      domain: env.CONVEX_SITE_URL,
-      applicationID: "convex",
-    },
-  ],
-};
+  providers: env.CLERK_JWT_ISSUER_DOMAIN ? [{
+    domain: env.CLERK_JWT_ISSUER_DOMAIN,
+    applicationID: "convex",
+  }] : [],
+} satisfies AuthConfig;

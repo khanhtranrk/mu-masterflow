@@ -86,7 +86,7 @@
 }
 
 .auth-card {
-  width: min(440px, 100%);
+  width: min(500px, 100%);
 }
 
 .auth-card h1 {
@@ -555,7 +555,7 @@
 }
 
 .auth-card {
-  width: min(440px, 100%);
+  width: min(500px, 100%);
   padding: 24px;
   border-radius: 12px;
 }

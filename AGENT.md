@@ -30,7 +30,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `src/components/LoginServerDialog.tsx`: login-specific server selection and editing dialog.
 - `src/components/DisconnectedRoot.tsx`: persistent workspace/settings shell for choosing a server while disconnected.
 - `src/components/SettingsView.tsx`: appearance, server management, and account sign-out settings.
-- `src/components/AuthenticatedRoot.tsx`: auth gate, sign-in/sign-up, and remembered-account UI.
+- `src/components/AuthenticatedRoot.tsx`: Clerk sign-in and backend whitelist access gate.
 - `convex/schema.ts`: Convex tables and indexes.
 - `convex/specs.ts`: spec queries and mutations, YAML retrieval, archive handling.
 - `convex/requests.ts`: request creation/list/update and request/node status validators.
@@ -40,7 +40,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - `convex/http.ts`: bearer-authenticated worker HTTP endpoints.
 - `convex/unitTokens.ts`: internal unit-token lookup, creation, updates, revocation, and last-used tracking.
 - `convex/notifications.ts`: notification query, read/dismiss mutations, and internal creation.
-- `convex/auth.ts`, `convex/auth.config.ts`: Convex Auth password provider, first-account-only registration, and JWT issuer configuration.
+- `convex/auth.ts`, `convex/auth.config.ts`: caller access status and Clerk JWT issuer configuration.
 - `convex/authz.ts`: shared guard used by public application queries and mutations.
 - `src-tauri/`: Tauri v2 desktop wrapper and window config.
 - `README.md`: repository entry point.
@@ -70,7 +70,7 @@ Keep the app calm and focused: persistent left sidebar for specs, selected spec 
 - Worker reports use `POST /api/requests/report` with the `node_states` HTTP property, which is stored as `requests.nodeStates`.
 - Worker hooks use the Convex HTTP site URL, not the Convex client URL. For the default self-hosted Docker setup these are ports `3211` (HTTP site) and `3210` (Convex API).
 - The desktop stores Convex profile names, URLs, remembered account email addresses, and the dark appearance preference in the Tauri app config directory. Profiles include separate client/API and HTTP site URLs; signing out does not remove a profile. The app does not store a Convex admin key or account passwords.
-- Desktop Convex queries/mutations require Convex Auth. Each deployment allows only its first account to register; the backend enforces this during the atomic user-creation mutation, and every authenticated user shares access with no per-user ownership. The client remembers account emails per local server profile but never stores passwords. Worker HTTP hooks remain bearer-token authenticated.
+- Desktop Convex queries/mutations require a Clerk JWT and backend whitelist access (Clerk User ID OR verified primary email). Every allowed user shares access with no per-user ownership. Worker HTTP hooks remain bearer-token authenticated. Clerk manages sessions across server profiles; backend policy remains deployment-specific. See [Clerk auth](docs/clerk-auth.md). Legacy Convex Auth tables/dependency are retained only for rollback until live verification; do not re-enable old auth endpoints.
 - Unit-token management is grouped in **Settings → Unit tokens** and uses the Convex client API. Worker HTTP hooks remain under `/api/` and use bearer tokens.
 - The sidebar shows the selected Convex server and connection state in a badge by the brand. Disconnecting keeps the app shell and Settings available while clearing only the active profile selection.
 - Workers create notifications with `POST /api/notifications/send`, using an active bearer token and a JSON `title`, `message`, and optional string-array `tags`. The desktop subscribes to notifications through Convex; its list is newest-first and limited to 100 in the UI.

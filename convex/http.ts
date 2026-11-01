@@ -1,7 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { auth } from "./auth";
 import { isArtifactArray, type NodeUpdate } from "./artifactModel";
 import type { Id } from "./_generated/dataModel";
 
@@ -48,7 +47,6 @@ function parseSelection(data: Record<string, unknown>) {
 }
 
 const http = httpRouter();
-auth.addHttpRoutes(http);
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
   "access-control-allow-origin": "*",

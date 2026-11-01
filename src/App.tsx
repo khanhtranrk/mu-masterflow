@@ -19,7 +19,7 @@ import { RequestEditor, type RequestEditorSession } from "./components/RequestEd
 import { requestTitle } from "./requestModel";
 import "./request-editor.css";
 import { sendSystemNotification } from "./systemNotifications";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useClerk } from "@clerk/react";
 import type { ConvexServerProfile } from "./connectionSettings";
 import type { ConnectionSettings } from "./connectionSettings";
 import type { ConfigTab, PipelineNode, RequestItem, SpecItem } from "./types";
@@ -77,7 +77,7 @@ function App({
   const lastParsed = useRef<Record<string, any>>({});
   const editRevision = useRef(0);
   const seenNotificationIds = useRef<Set<string> | null>(null);
-  const { signOut } = useAuthActions();
+  const { signOut } = useClerk();
 
   const remoteSpecs = useQuery(api.specs.list, {});
   const remoteNotifications = useQuery(api.notifications.list, { limit: 100 });
