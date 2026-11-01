@@ -15,7 +15,10 @@ export type RequestArtifact = {
   nodeName?: string;
   name: string;
   label?: string;
-  storageId: string;
+  storageId?: string;
+  handler?: "s3";
+  connectionId?: string;
+  objectKey?: string;
   contentType: string;
   size: number;
   createdAt: number;

@@ -3,7 +3,7 @@ import { v, type Infer } from "convex/values";
 // One contract for request files, node references, HTTP reports and responses.
 export const artifact = v.object({
   id: v.string(), nodeName: v.optional(v.string()), name: v.string(),
-  label: v.optional(v.string()), storageId: v.id("_storage"),
+  label: v.optional(v.string()), storageId: v.optional(v.id("_storage")), handler: v.optional(v.literal("s3")), connectionId: v.optional(v.string()), objectKey: v.optional(v.string()),
   contentType: v.string(), size: v.number(), createdAt: v.number(),
 });
 export type Artifact = Infer<typeof artifact>;
@@ -21,9 +21,10 @@ export function isArtifactArray(value: unknown): value is Artifact[] {
   const ids = new Set<string>();
   return value.every(item => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return false;
-    const allowed = ["id", "nodeName", "name", "label", "storageId", "contentType", "size", "createdAt"];
+    const allowed = ["id", "nodeName", "name", "label", "storageId", "contentType", "size", "createdAt", "handler", "connectionId", "objectKey"];
     if (Object.keys(item).some(key => !allowed.includes(key))) return false;
-    if (![item.id, item.name, item.storageId, item.contentType].every(v => typeof v === "string" && v.trim())) return false;
+    if (![item.id, item.name, item.contentType].every(v => typeof v === "string" && v.trim())) return false;
+    if (item.handler === "s3" ? !(typeof item.connectionId === "string" && typeof item.objectKey === "string") : typeof item.storageId !== "string") return false;
     if (ids.has(item.id)) return false;
     ids.add(item.id);
     return (item.nodeName === undefined || typeof item.nodeName === "string")

@@ -2,6 +2,7 @@ import { artifact, isArtifactArray, nodeUpdate } from "./artifactModel";
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { parse } from "yaml";
+import { assignedRequest } from "./workerAccess";
 import { requireAuthenticated } from "./authz";
 import type { MutationCtx } from "./_generated/server";
 import { requestStatus, selectionArgs, selectRequests } from "./requestSelection";
@@ -81,6 +82,8 @@ export const reset = mutation({
     await ctx.db.patch(id, {
       status: "waiting",
       unitId: undefined,
+      assignedTokenId: undefined,
+      assignmentVersion: (request.assignmentVersion ?? 0) + 1,
       claimedAt: undefined,
       nodeStates: undefined,
       artifacts: undefined,
@@ -165,14 +168,18 @@ export const editPayload = mutation({
 export const report = internalMutation({
   args: {
     id: v.id("requests"),
+    tokenId: v.id("unitTokens"),
+    assignmentVersion: v.number(),
     nodeStates: v.optional(v.record(v.string(), nodeUpdate)),
     status: v.optional(requestStatus),
   },
   returns: v.id("requests"),
 
   handler: async (ctx, args) => {
-    const { id, nodeStates: incomingNodes, ...patch } = args;
-    const request = await ctx.db.get(id);
+    const { id, tokenId, assignmentVersion, nodeStates: incomingNodes, ...patch } = args;
+    const request = await assignedRequest(ctx, id, tokenId, true);
+    if (request.assignmentVersion !== assignmentVersion) throw new Error("Stale assignment");
+    if (patch.status === "waiting" || patch.status === "possessed") throw new Error("Worker cannot requeue or reassign a request");
 
     if (!request) {
       throw new Error("Request not found");

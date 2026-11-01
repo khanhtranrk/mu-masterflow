@@ -20,7 +20,7 @@ The app is a Tauri v2 desktop shell around a web frontend. Convex is the shared 
 
 The connection controller loads server profiles and the saved appearance preference before mounting the Clerk and Convex providers. Tauri stores profile names, endpoint URLs, remembered account emails, and the dark-mode flag in its app config directory; browser preview uses local storage. A profile stores separate client/API and HTTP site URLs. Signing out of a user account preserves the selected server; disconnecting clears only the active selection, keeps all profiles, and leaves the Settings workspace visible so another server can be selected. Removing a profile is a separate action. The app does not store a Convex admin key. Account, appearance, server, and Unit-token management are grouped in the Settings page. The login screen uses its own server-selection dialog, while Settings uses an inline server panel.
 
-The desktop uses Clerk for sign-in and session management. Convex verifies JWTs using the configured Clerk issuer with audience `convex`. Every public application query/mutation uses `requireAuthenticated`, which checks the issuer and deployment whitelist: exact Clerk User ID OR exact verified primary email. Empty/malformed policy denies access. All allowed accounts share the existing application data; no per-user ownership is introduced. `auth.access` reports only the caller's access status for the frontend gate. Worker HTTP hooks retain their separate bearer-token authorization. Saved server profiles remain unchanged. See [Clerk authentication](clerk-auth.md).
+The desktop uses Clerk for sign-in and session management. Convex verifies JWTs using the configured Clerk issuer with audience `convex`. Every public application query/mutation uses `requireAuthenticated`, which checks the issuer and deployment whitelist: exact Clerk User ID OR exact verified primary email. Empty/malformed policy denies access. Allowed accounts share business data; the explicit application owner alone manages storage connections, worker tokens and artifact removal. `auth.access` reports only the caller's access status for the frontend gate. Worker HTTP hooks retain their separate bearer-token authorization. Saved server profiles remain unchanged. See [Clerk authentication](clerk-auth.md).
 
 ## Tables
 
@@ -34,7 +34,7 @@ The YAML string is authoritative. Do not denormalize pipeline params or nodes in
 
 ### `requests`
 
-One document per submitted run/request. Fields are `specSlug`, `pipelineName`, `status`, arbitrary `payload`, optional `nodeStates`, optional `artifacts`, optional `unitId`, optional `claimedAt`, and optional `deletedAt`. The UI submits the pipeline parameter values as `payload`; node runtime information is keyed by node name in `nodeStates`.
+One document per submitted run/request. Fields are `specSlug`, `pipelineName`, `status`, arbitrary `payload`, optional `nodeStates`, optional `artifacts`, optional `unitId`, optional `claimedAt`, `assignedTokenId`, `assignmentVersion`, and optional `deletedAt`. The UI submits the pipeline parameter values as `payload`; node runtime information is keyed by node name in `nodeStates`.
 
 Request selection uses compound indexes for `specSlug` and each supported combination of status, pipeline, and unit filters, with `deletedAt` as the final indexed field. List, inspection, and atomic claim queries require `deletedAt` to be absent before applying their limits. The standalone `by_status` index is also retained.
 
@@ -44,7 +44,7 @@ One document per worker `unitId`, including `unitType`, `status` (`online` or `o
 
 ### `unitTokens`
 
-Stores token `name`, `tokenHash`, `createdAt`, optional `lastUsedAt`, `expiresAt`, and `deletedAt`. The UI generates token plaintext in the browser, hashes it with SHA-256, and stores only the hash. Worker requests are authorized against the stored hash. Token management uses public Convex queries and mutations.
+Stores token `name`, `tokenHash`, `createdAt`, optional `lastUsedAt`, `expiresAt`, and `deletedAt`. The UI generates token plaintext in the browser, hashes it with SHA-256, and stores only the hash. Worker requests are authorized against the stored hash plus immutable unit binding, allowed spec slugs and request assignment generation. Token management is restricted to the Clerk application owner.
 
 ### `notifications`
 
@@ -123,9 +123,9 @@ Requests can be deleted from the request details with confirmation. Deletion set
 
 ### Request artifact storage
 
-`requests.artifacts[]` owns completed file metadata; bytes live in Convex `_storage`. Optional node names annotate the producing node. `artifactUploads` records request, logical artifact ID, caller, expected digest/size, expiry and optional bound storage ID, indexed by storage ID. Completion validates the receipt and storage metadata, then atomically upserts one artifact without overwriting siblings. Replacement deletes the previous file. Soft deletion retains bytes; failed native uploads and receipts currently require deliberate cleanup. See [Request artifacts](request-artifacts.md) for the full contract and bearer URL access model.
+The `artifacts` table owns the canonical artifactId/requestId/handler/metadata record. `storageConnections` stores stable IDs and encrypted S3 credentials; `storageSettings` stores the Clerk application owner and default connection. `storageUploads` binds temporary transfers to the request, caller and assignment/reset generation. Old `artifactUploads` receipts remain read-only migration/audit data. Request/node artifact arrays are compatibility projections kept transactionally consistent for existing graph/report workflows.
 
-`convex/requestArtifacts.ts` owns public desktop and internal worker storage functions. `src/components/RequestArtifacts.tsx` renders request files and performs desktop uploads. Worker inspection/claims include artifact metadata. Node artifact arrays share the request artifact shape and reference verified files on the same request; reports validate exact metadata and node assignment. Completion refreshes node references atomically when a file is replaced. Legacy node string maps are no longer accepted; see the rollout notes in the artifact contract.
+`artifactTransfers.ts` issues private presigned GET/PUT URLs and finalizes through provider-side copy; Convex never proxies bytes. `artifactStore.ts` enforces assignment and owner-only record removal. Neither replacement nor deletion removes physical files. Legacy Convex files remain readable until an explicit external migration. See [Request artifacts](request-artifacts.md) for schema, protocol, credentials, limits and migration.
 
 ## Responsive workspace layout
 

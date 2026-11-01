@@ -1,8 +1,19 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { artifactFields, uploadFields } from "./storageModel";
 import { artifact } from "./artifactModel";
 
 export default defineSchema({
+  storageSettings: defineTable({ ownerId: v.string(), defaultConnectionId: v.optional(v.string()) }),
+  storageConnections: defineTable({
+    connectionId: v.string(), name: v.string(), provider: v.union(v.literal("r2"), v.literal("supabase")),
+    endpoint: v.string(), region: v.string(), bucket: v.string(), prefix: v.string(),
+    encryptedCredentials: v.string(), enabled: v.boolean(), createdAt: v.number(),
+  }).index("by_connection", ["connectionId"]),
+  artifacts: defineTable({ ...artifactFields, deletedAt: v.optional(v.number()) })
+    .index("by_request_artifact", ["requestId", "artifactId"]).index("by_connection", ["metadata.connectionId"]).index("by_handler", ["handler", "deletedAt"]),
+  storageUploads: defineTable(uploadFields)
+    .index("by_request", ["requestId"]).index("by_request_pending", ["requestId", "completed", "expiresAt"]),
   notifications: defineTable({
     title: v.string(),
     message: v.string(),
@@ -15,6 +26,8 @@ export default defineSchema({
   .index("by_deleted_at", ["deletedAt"]),
 
   unitTokens: defineTable({
+    unitId: v.optional(v.string()),
+    specSlugs: v.optional(v.array(v.string())),
     name: v.string(),
     tokenHash: v.string(),
     createdAt: v.number(),
@@ -48,6 +61,8 @@ export default defineSchema({
   .index("by_request", ["requestId"]),
 
   requests: defineTable({
+    assignedTokenId: v.optional(v.id("unitTokens")),
+    assignmentVersion: v.optional(v.number()),
     specSlug: v.string(),
     pipelineName: v.string(),
     resetVersion: v.optional(v.number()),
@@ -82,6 +97,7 @@ export default defineSchema({
   .index("by_status_deleted_at", ["status", "deletedAt"]),
 
   units: defineTable({
+    tokenId: v.optional(v.id("unitTokens")),
     unitId: v.string(),
     unitType: v.string(),
     status: v.union(v.literal("online"), v.literal("offline")),

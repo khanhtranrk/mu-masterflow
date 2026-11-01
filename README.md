@@ -11,7 +11,7 @@ Built with **React, Vite, Tauri, and Convex**.
 - Manage YAML pipeline specifications, view dependency graphs, inspect reusable routines and configure lifecycle event hooks.
 - Create requests for different pipelines and inspect node-by-node progress.
 - Monitor connected workers, execution states, and notifications.
-- Upload and retrieve request artifacts through Convex File Storage.
+- Upload and retrieve request artifacts through private Supabase/R2 storage with temporary signed URLs.
 - Connect the desktop to a Convex server and manage worker access tokens.
 
 ## Get started

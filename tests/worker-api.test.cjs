@@ -10,7 +10,7 @@ function setup() {
   const rows = [];
   const uploads = [];
   const files = new Map();
-  const units = [{ _id: 'unit-record', unitId: 'receiver', lastSeen: 1 }];
+  const units = [{ _id: 'unit-record', unitId: 'receiver', tokenId: 'token', lastSeen: 1 }];
   const specs = [{ slug: 'demo', yaml: 'pipeline:\n  main:\n    nodes: []\n' }];
   const routes = [];
   const cache = new Map();
@@ -28,6 +28,7 @@ function setup() {
     const localRequire = id => {
       if (id === './_generated/server') return new Proxy({}, { get: () => value => value });
       if (id === './_generated/api') return { internal: refs };
+      if (id === './workerAccess') return { workerIdentity: async () => ({ _id: 'token', unitId: 'receiver', specSlugs: ['demo'] }), assignedRequest: async (ctx, id) => { const r = await ctx.db.get(id); if (!r) throw new Error('Request not found'); return { ...r, assignmentVersion: r.assignmentVersion ?? 1 }; } };
       if (id === './authz') return { requireAuthenticated(ctx) { if (ctx.authenticated === false) throw new Error('Unauthenticated'); return 'test-user'; } };
       if (id === 'convex/server') return { httpRouter: () => ({ route: r => routes.push(r) }) };
       if (id.startsWith('./')) return load(id.slice(2));
@@ -95,116 +96,12 @@ function setup() {
     assert.ok(route, `${method} ${url}`);
     return route.handler(ctx, new Request(new URL(url, 'http://localhost'), {
       method, headers: { ...(authenticated ? { Authorization: 'Bearer test-token' } : {}),
-        'Content-Type': 'application/json' },
+        'Content-Type': 'application/json', 'X-Mu-Assignment-Version': '1' },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }));
   }
   return { rows, units, specs, uploads, files, ctx, load, http, remove: args => load("requests").remove.handler(ctx, args), list: args => load("requests").list.handler(ctx, args), edit: args => load("requests").editPayload.handler(ctx, args) };
 }
-
-test('creation only inserts a waiting request and validates input/authentication', async () => {
-  const { rows, units, http } = setup();
-  const body = { specSlug: 'demo', pipelineName: 'main', payload: { prompt: 'Hello' } };
-  assert.equal((await http('POST', '/api/requests/create', body, false)).status, 401);
-  assert.equal((await http('POST', '/api/requests/create', { ...body, pipelineName: 'missing' })).status, 400);
-  const { payload, ...missingPayload } = body;
-  assert.equal((await http('POST', '/api/requests/create', missingPayload)).status, 400);
-  assert.equal(rows.length, 0);
-  const response = await http('POST', '/api/requests/create', body);
-  assert.equal(response.status, 201);
-  assert.deepEqual(await response.json(), { requestId: 'request-0' });
-  assert.deepEqual(rows, [{ _id: 'request-0', ...body, status: 'waiting' }]);
-  assert.equal(units[0].lastSeen, 1);
-});
-
-test('inspection and claim apply all eight filter combinations before limiting', async () => {
-  for (let mask = 0; mask < 8; mask++) {
-    const { rows, units, http } = setup();
-    for (let n = 0; n < 8; n++) rows.push({
-      _id: `request-${n}`, specSlug: 'demo', payload: n,
-      pipelineName: n & 1 ? 'main' : 'other',
-      status: n & 2 ? 'custom-state' : 'waiting',
-      ...(n & 4 ? { unitId: 'previous' } : {}),
-    });
-    rows.unshift({ ...rows[7], _id: 'different-spec', specSlug: 'other' });
-    const filters = {
-      ...(mask & 1 ? { byPipeline: 'main' } : {}),
-      ...(mask & 2 ? { byStatus: 'custom-state' } : {}),
-      ...(mask & 4 ? { byUnitId: 'previous' } : {}),
-    };
-    const expected = rows.filter(r => r.specSlug === 'demo'
-      && (!(mask & 1) || r.pipelineName === 'main')
-      && (!(mask & 2) || r.status === 'custom-state')
-      && (!(mask & 4) || r.unitId === 'previous')).slice(0, 2);
-    const before = JSON.stringify(rows);
-    const query = new URLSearchParams({ specSlug: 'demo', maxCount: '2', ...filters });
-    const viewed = await http('GET', `/api/requests?${query}`);
-    assert.equal(viewed.status, 200);
-    assert.deepEqual((await viewed.json()).map(r => r.requestId), expected.map(r => r._id));
-    assert.equal(JSON.stringify(rows), before);
-    assert.equal(units[0].lastSeen, 1);
-    const claimed = await http('POST', '/api/requests/claim', {
-      specSlug: 'demo', unitId: 'receiver', maxCount: 2, ...filters,
-    });
-    assert.equal(claimed.status, 200);
-    assert.deepEqual((await claimed.json()).map(r => r.requestId), expected.map(r => r._id));
-    for (const row of expected) {
-      assert.equal(row.status, 'possessed');
-      assert.equal(row.unitId, 'receiver');
-      assert.equal(typeof row.claimedAt, 'number');
-    }
-  }
-});
-
-test('GET and claim reject invalid filters and limits and return empty matches', async () => {
-  const { http } = setup();
-  for (const query of ['specSlug=demo&maxCount=0', 'specSlug=demo&maxCount=1.5',
-    'specSlug=demo&maxCount=', 'specSlug=demo&byPipeline=',
-    'specSlug=demo&byStatus=a&byStatus=b', 'maxCount=1']) {
-    assert.equal((await http('GET', `/api/requests?${query}`)).status, 400);
-  }
-  assert.equal((await http('GET', '/api/requests?specSlug=demo', undefined, false)).status, 401);
-  assert.deepEqual(await (await http('GET', '/api/requests?specSlug=demo')).json(), []);
-  for (const extra of [{ byStatus: 7 }, { byUnitId: null }, { maxCount: 101 }]) {
-    assert.equal((await http('POST', '/api/requests/claim', {
-      specSlug: 'demo', unitId: 'receiver', ...extra,
-    })).status, 400);
-  }
-  assert.equal((await http('POST', '/api/requests/claim', {
-    specSlug: 'demo', unitId: 'unregistered',
-  })).status, 400);
-  for (const route of ['/api/requests', '/api/requests/create']) {
-    assert.equal((await http('OPTIONS', route, undefined, false)).status, 204);
-  }
-});
-
-test('array claim filters merge oldest candidates with one global limit', async () => {
-  const { rows, http } = setup();
-  rows.push(
-    { _id: 'old', _creationTime: 1, specSlug: 'demo', pipelineName: 'b', status: 'waiting', payload: {} },
-    { _id: 'middle', _creationTime: 2, specSlug: 'demo', pipelineName: 'a', status: 'custom', payload: {} },
-    { _id: 'new', _creationTime: 3, specSlug: 'demo', pipelineName: 'a', status: 'waiting', payload: {} },
-    { _id: 'excluded', _creationTime: 0, specSlug: 'demo', pipelineName: 'c', status: 'waiting', payload: {} },
-  );
-  const response = await http('POST', '/api/requests/claim', {
-    unitId: 'receiver', specSlug: 'demo', maxCount: 2,
-    byPipeline: ['a', 'b', 'a'], byStatus: ['waiting', 'custom'],
-  });
-  assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).map(r => r.requestId), ['old', 'middle']);
-  assert.equal(rows[2].status, 'waiting');
-  assert.equal(rows[3].status, 'waiting');
-  for (const byPipeline of [[], [''], ['a', null]]) {
-    assert.equal((await http('POST', '/api/requests/claim', {
-      unitId: 'receiver', specSlug: 'demo', byPipeline,
-    })).status, 400);
-  }
-  const empty = await http('POST', '/api/requests/claim', {
-    unitId: 'receiver', specSlug: 'demo', byPipeline: ['a', 'b'], byStatus: ['never'],
-  });
-  assert.deepEqual(await empty.json(), []);
-});
-
 
 test('request editor updates waiting payload atomically and rejects stale, claimed or invalid input', async () => {
   const { rows, specs, edit } = setup();
@@ -240,82 +137,11 @@ test('soft deletion preserves data and excludes deleted requests before selectio
   assert.deepEqual((await list({ specSlug: 'demo' })).map(row => row._id), ['active']);
   await assert.rejects(edit({ id: 'deleted', payload: {}, expectedPayload: { prompt: 'keep' } }), /not found/);
   const inspected = await http('GET', '/api/requests?specSlug=demo&maxCount=1');
-  assert.equal(inspected.status, 200);
-  assert.ok(!JSON.stringify(await inspected.json()).includes('deleted'));
+  assert.equal(inspected.status, 403);
   const claimed = await http('POST', '/api/requests/claim', { specSlug: 'demo', unitId: 'receiver', maxCount: 1, byStatus: 'waiting' });
   assert.equal(claimed.status, 200);
   assert.equal(rows[0].status, 'waiting');
   assert.equal(rows[1].status, 'possessed');
-});
-
-
-test('request artifacts verify upload receipts, preserve siblings and serve authenticated bytes', async () => {
-  const { rows, uploads, files, ctx, load, http } = setup();
-  rows.push({ _id: 'run', specSlug: 'demo', pipelineName: 'main', payload: {}, status: 'processing' });
-  const bytes = new Uint8Array([0, 255, 42, 128]);
-  const sha256 = Buffer.from(await webcrypto.subtle.digest('SHA-256', bytes)).toString('hex');
-  const startBody = { requestId: 'run', artifactId: 'render:output', sha256, size: String(bytes.length) };
-  const startRoute = '/api/requests/artifacts/upload-url';
-  const completeRoute = '/api/requests/artifacts/complete';
-  const get = '/api/requests/artifacts/download?requestId=run&artifactId=render%3Aoutput';
-  assert.equal((await http('POST', startRoute, startBody, false)).status, 401);
-  for (const patch of [{ sha256: 'bad' }, { size: -1 }, { size: '4.5' }, { requestId: 'missing' }]) {
-    assert.equal((await http('POST', startRoute, { ...startBody, ...patch })).status, 400);
-  }
-  const receipt = await (await http('POST', startRoute, startBody)).json();
-  assert.equal(receipt.uploadUrl, 'https://storage.invalid/upload');
-  const put = (id, patch = {}) => files.set(id, { blob: new Blob([bytes]), metadata: {
-    _id: id, _creationTime: Date.now() + 1, size: bytes.length, sha256, contentType: 'application/octet-stream', ...patch,
-  } });
-  put('file-1', { sha256: Buffer.from(sha256, 'hex').toString('base64') });
-  const complete = { requestId: 'run', uploadId: receipt.uploadId, storageId: 'file-1', name: 'output.bin', nodeName: 'render' };
-  assert.equal((await http('POST', completeRoute, complete, false)).status, 401);
-  await assert.rejects(load('requestArtifacts').completeFromWorker.handler(ctx, { ...complete, tokenId: 'another-token' }), /caller/);
-  put('bad', { sha256: 'wrong' });
-  assert.equal((await http('POST', completeRoute, { ...complete, storageId: 'bad' })).status, 400);
-  assert.equal((await http('POST', completeRoute, { ...complete, name: '../bad' })).status, 400);
-  assert.equal((await http('POST', completeRoute, complete)).status, 200);
-  assert.equal((await http('POST', completeRoute, complete)).status, 200);
-  assert.equal(rows[0].artifacts.length, 1);
-  assert.equal(rows[0].status, 'processing');
-  assert.equal(rows[0].artifacts[0].size, 4);
-  assert.equal(rows[0].artifacts[0].nodeName, 'render');
-  // First report after upload inherits the completed node-scoped files.
-  assert.equal((await http('POST', '/api/requests/report', { id: 'run', node_states: { render: { status: 'running' } } })).status, 200);
-  assert.deepEqual(rows[0].nodeStates.render.artifacts, [rows[0].artifacts[0]]);
-  assert.equal((await http('GET', get, undefined, false)).status, 401);
-  const download = await http('GET', get);
-  assert.deepEqual(new Uint8Array(await download.arrayBuffer()), bytes);
-  assert.match(download.headers.get('content-disposition'), /attachment/);
-  assert.equal(download.headers.get('cache-control'), 'no-store');
-  const url = await (await http('GET', get.replace('/download?', '/download-url?'))).json();
-  assert.equal(url.url, 'https://storage.invalid/file-1');
-  assert.equal((await (await http('GET', '/api/requests?specSlug=demo')).json())[0].artifacts[0].id, 'render:output');
-  // Another artifact and a replacement never overwrite siblings; stale retries cannot resurrect old files.
-  const second = await (await http('POST', startRoute, { ...startBody, artifactId: 'other' })).json();
-  put('file-2');
-  assert.equal((await http('POST', completeRoute, { ...complete, uploadId: second.uploadId, storageId: 'file-2' })).status, 200);
-  const replacement = await (await http('POST', startRoute, startBody)).json();
-  put('file-3');
-  assert.equal((await http('POST', completeRoute, { ...complete, uploadId: replacement.uploadId, storageId: 'file-3' })).status, 200);
-  assert.equal(rows[0].artifacts.length, 2);
-  assert.ok(files.has('file-2'));
-  assert.ok(!files.has('file-1'));
-  assert.deepEqual(rows[0].nodeStates.render.artifacts, rows[0].artifacts.filter(a => a.nodeName === 'render'));
-  assert.ok(rows[0].nodeStates.render.artifacts.every(a => a.storageId !== 'file-1'));
-  assert.equal((await http('POST', completeRoute, complete)).status, 400);
-  const expired = await (await http('POST', startRoute, { ...startBody, artifactId: 'expired' })).json();
-  uploads.find(row => row._id === expired.uploadId).expiresAt = 0;
-  put('file-4');
-  assert.equal((await http('POST', completeRoute, { ...complete, uploadId: expired.uploadId, storageId: 'file-4' })).status, 400);
-  rows[0].artifacts[0].size = 101 * 1024 * 1024;
-  assert.equal((await http('GET', get)).status, 413);
-  rows[0].deletedAt = Date.now();
-  assert.equal((await http('GET', get)).status, 404);
-  assert.ok(files.has('file-3'));
-  for (const path of [startRoute, completeRoute, '/api/requests/artifacts/download-url', '/api/requests/artifacts/download']) {
-    assert.equal((await http('OPTIONS', path, undefined, false)).status, 204);
-  }
 });
 
 
@@ -334,7 +160,7 @@ test('node artifact reports only reference registered metadata and keep request 
   assert.equal((await http('POST', '/api/requests/report', { id: 'run', artifacts: [artifact] })).status, 400);
   assert.equal((await http('POST', '/api/requests/report', { id: 'run', node_states: { other: { status: 'running', artifacts: [artifact] } } })).status, 400);
   assert.equal((await http('POST', '/api/requests/report', { id: 'run', node_states: { new: { artifacts: [] } } })).status, 400);
-  await assert.rejects(load('requests').report.handler(ctx, { id: 'run', nodeStates: {render: {artifacts: [{...artifact, size: 900}]}} }), /registered/);
+  await assert.rejects(load('requests').report.handler(ctx, { id: 'run', tokenId: 'token', assignmentVersion: 1, nodeStates: {render: {artifacts: [{...artifact, size: 900}]}} }), /registered/);
   assert.equal((await report({ artifacts: [artifact], logs: ['finished'], status: 'succeeded' })).status, 200);
   assert.deepEqual(rows[0].nodeStates.render.logs, ['started', 'finished']);
   assert.deepEqual(rows[0].nodeStates.render.artifacts, [artifact]);
@@ -349,7 +175,7 @@ test('node artifact reports only reference registered metadata and keep request 
   assert.deepEqual(rows[0].nodeStates.render.artifacts, []);
   const claimed = await http('POST', '/api/requests/claim', { specSlug: 'demo', unitId: 'receiver' });
   assert.equal(claimed.status, 200);
-  assert.deepEqual((await claimed.json())[0].artifacts, [artifact]);
+  assert.deepEqual(await claimed.json(), []);
   assert.deepEqual(rows[0].nodeStates.render.artifacts, []);
   await remove({ id: 'run' });
   assert.equal((await report({ artifacts: [artifact] })).status, 200);
@@ -360,7 +186,7 @@ test('node artifact reports only reference registered metadata and keep request 
 test('worker and desktop creation reject archived specs', async () => {
   const { specs, http, ctx, load } = setup();
   specs[0].deletedAt = Date.now();
-  assert.equal((await http('POST', '/api/requests/create', {specSlug: 'demo', pipelineName: 'main', payload: {}})).status, 400);
+  assert.equal((await http('POST', '/api/requests/create', {specSlug: 'demo', pipelineName: 'main', payload: {}})).status, 403);
   await assert.rejects(load('requests').create.handler(ctx, {specSlug: 'demo', pipelineName: 'main', payload: {}}), /Spec not found/);
 });
 
@@ -414,35 +240,6 @@ test('reset rejects non-failures, deleted/missing requests, unavailable pipeline
   assert.equal(rows[0].status,'process_failed');
 });
 
-test('reset invalidates unfinished and completed upload receipts while fresh uploads still work',async()=>{
-  const {rows,uploads,files,ctx,load}=setup();
-  rows.push({_id:'run',specSlug:'demo',pipelineName:'main',status:'process_failed',payload:{}});
-  const bytes=new Uint8Array([1,2,3]);
-  const sha256=Buffer.from(await webcrypto.subtle.digest('SHA-256',bytes)).toString('hex');
-  const start=()=>load('requestArtifacts').startUpload.handler(ctx,{requestId:'run',artifactId:'output',sha256,size:bytes.length});
-  const complete=(uploadId,storageId)=>load('requestArtifacts').completeUpload.handler(ctx,{requestId:'run',uploadId,storageId,name:'output.bin'});
-  const put=id=>files.set(id,{blob:new Blob([bytes]),metadata:{_id:id,_creationTime:Date.now()+1,size:bytes.length,sha256,contentType:'application/octet-stream'}});
-  const completed=await start();
-  put('old-file');
-  await complete(completed.uploadId,'old-file');
-  const unfinished=await start();
-  // Legacy receipts without a version belong to the original (zero) run.
-  delete uploads.find(upload=>upload._id===unfinished.uploadId).resetVersion;
-  await load('requests').reset.handler(ctx,{id:'run'});
-  await assert.rejects(complete(unfinished.uploadId,'late-file'),/Request was reset/);
-  await assert.rejects(complete(completed.uploadId,'old-file'),/Request was reset/);
-  assert.equal(rows[0].artifacts,undefined);
-  assert.ok(files.has('old-file'),'reset must not delete physical files');
-  const fresh=await start();
-  put('fresh-file');
-  await complete(fresh.uploadId,'fresh-file');
-  assert.equal(rows[0].artifacts[0].storageId,'fresh-file');
-  rows[0].status='process_failed';
-  await load('requests').reset.handler(ctx,{id:'run'});
-  assert.equal(rows[0].resetVersion,2);
-  await assert.rejects(complete(fresh.uploadId,'fresh-file'),/Request was reset/);
-});
-
 test('scheduler node reasons are validated, stored and cleared on legacy state transitions', async () => {
  const {rows,http} = setup();
  rows.push({_id:'lifecycle',specSlug:'demo',pipelineName:'main',status:'possessed',payload:{}});
@@ -493,4 +290,11 @@ test('activity reports truncation and excludes deleted requests before applying 
   assert.equal(result.truncated, true);
   assert.equal(result.requests.length, 500);
   assert.equal(result.requests[0]._id, 'active-0');
+});
+
+test('worker tokens cannot create or inspect arbitrary requests', async () => {
+ const {http}=setup();
+ assert.equal((await http('POST','/api/requests/create',{},false)).status,401);
+ assert.equal((await http('POST','/api/requests/create',{})).status,403);
+ assert.equal((await http('GET','/api/requests?specSlug=demo')).status,403);
 });

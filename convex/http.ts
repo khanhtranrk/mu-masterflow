@@ -55,7 +55,7 @@ const jsonHeaders = {
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: jsonHeaders });
 const options = httpAction(async () => new Response(null, { status: 204, headers: {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization,content-type",
+  "access-control-allow-headers": "authorization,content-type,x-mu-assignment-version",
   "access-control-allow-methods": "GET,POST,OPTIONS",
 } }));
 
@@ -119,77 +119,39 @@ const authorize = async (
   return valid && unitToken ? unitToken._id : null;
 };
 
-// Artifact registration is separate from byte upload. Native Convex upload URLs
-// are bearer capabilities; worker tokens are only sent to our own API routes.
-for (const path of ["upload-url", "complete", "download-url", "download"]) {
-  http.route({ path: `/api/requests/artifacts/${path}`, method: "OPTIONS", handler: options });
-}
-for (const operation of ["upload-url", "complete"] as const) {
-  http.route({
-    path: `/api/requests/artifacts/${operation}`, method: "POST",
-    handler: httpAction(async (ctx, request) => {
-      const tokenId = await authorize(ctx, request);
-      if (!tokenId) return json({ error: "Unauthorized: provide an active unit token" }, 401);
-      try {
-        const body = objectBody(await request.json());
-        const requestId = requiredString(body.requestId, "requestId") as Id<"requests">;
-        if (operation === "upload-url") {
-          const artifactId = requiredString(body.artifactId, "artifactId");
-          const sha256 = requiredString(body.sha256, "sha256");
-          // Command action stdout is text; accept canonical decimal byte counts.
-          const size = typeof body.size === "string" && /^(0|[1-9][0-9]*)$/.test(body.size) ? Number(body.size) : body.size;
-          if (typeof size !== "number") throw new Error("size is required and must be a number or decimal byte count");
-          return json(await ctx.runMutation(internal.requestArtifacts.startFromWorker, {
-            requestId, artifactId, sha256, size, tokenId,
-          }));
-        }
-        const uploadId = requiredString(body.uploadId, "uploadId") as Id<"artifactUploads">;
-        const storageId = requiredString(body.storageId, "storageId") as Id<"_storage">;
-        const name = requiredString(body.name, "name");
-        const nodeName = body.nodeName === undefined ? undefined : requiredString(body.nodeName, "nodeName");
-        const label = body.label === undefined ? undefined : requiredString(body.label, "label");
-        const artifact = await ctx.runMutation(internal.requestArtifacts.completeFromWorker, {
-          requestId, uploadId, storageId, name, tokenId,
-          ...(nodeName !== undefined ? { nodeName } : {}),
-          ...(label !== undefined ? { label } : {}),
-        });
-        return json({ artifact });
-      } catch (error) {
-        return json({ error: error instanceof Error ? error.message : "Invalid artifact request" }, 400);
-      }
-    }),
-  });
-}
-for (const operation of ["download-url", "download"] as const) {
-  http.route({
-    path: `/api/requests/artifacts/${operation}`, method: "GET",
-    handler: httpAction(async (ctx, request) => {
-      if (!(await authorize(ctx, request))) return json({ error: "Unauthorized: provide an active unit token" }, 401);
-      try {
+// File bytes go directly to storage. Only URL issuance and completion use these hooks.
+for (const operation of ["upload-url", "complete", "download-url", "download"]) {
+  const path = `/api/requests/artifacts/${operation}`;
+  http.route({ path, method: "OPTIONS", handler: options });
+  http.route({ path, method: operation.startsWith("download") ? "GET" : "POST", handler: httpAction(async (ctx, request) => {
+    const tokenId = await authorize(ctx, request);
+    if (!tokenId) return json({ error: "Unauthorized" }, 401);
+    try {
+      if (operation.startsWith("download")) {
         const params = new URL(request.url).searchParams;
-        const requestId = requiredString(params.get("requestId"), "requestId") as Id<"requests">;
-        const artifactId = requiredString(params.get("artifactId"), "artifactId");
-        const artifact = await ctx.runQuery(internal.requestArtifacts.getForWorker, { requestId, artifactId });
-        if (!artifact) return json({ error: "Artifact not found" }, 404);
-        if (operation === "download-url") {
-          const url = await ctx.storage.getUrl(artifact.storageId);
-          if (!url) return json({ error: "File not found" }, 404);
-          return json({ url, name: artifact.name, contentType: artifact.contentType, size: artifact.size });
-        }
-        if (artifact.size > 100 * 1024 * 1024) return json({ error: "File exceeds 100 MiB; use download-url" }, 413);
-        const blob = await ctx.storage.get(artifact.storageId);
-        if (!blob) return json({ error: "File not found" }, 404);
-        return new Response(blob, { headers: {
-          "content-type": artifact.contentType,
-          "content-disposition": `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(artifact.name).replace(/['()*]/g, c => `%${c.charCodeAt(0).toString(16)}`)}`,
-          "access-control-allow-origin": "*", "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-        } });
-      } catch (error) {
-        return json({ error: error instanceof Error ? error.message : "Invalid artifact request" }, 400);
+        const result = await ctx.runAction(internal.artifactTransfers.downloadWorker, {
+          tokenId, assignmentVersion: Number(request.headers.get("x-mu-assignment-version")), requestId: requiredString(params.get("requestId"), "requestId") as Id<"requests">,
+          artifactId: requiredString(params.get("artifactId"), "artifactId"),
+        });
+        // Compatibility route redirects; Convex never proxies object bytes.
+        return json(result);
       }
-    }),
-  });
+      const body = objectBody(await request.json());
+      const requestId = requiredString(body.requestId, "requestId") as Id<"requests">;
+      if (operation === "upload-url") return json(await ctx.runAction(internal.artifactTransfers.startWorker, {
+        tokenId, assignmentVersion: Number(request.headers.get("x-mu-assignment-version")), requestId, artifactId: requiredString(body.artifactId, "artifactId"), sha256: requiredString(body.sha256, "sha256"),
+        size: typeof body.size === "string" && /^(0|[1-9][0-9]*)$/.test(body.size) ? Number(body.size) : body.size as number,
+        ...(body.connectionId !== undefined ? { connectionId: requiredString(body.connectionId, "connectionId") } : {}),
+        ...(body.contentType !== undefined ? { contentType: requiredString(body.contentType, "contentType") } : {}),
+      }));
+      return json({ artifact: await ctx.runAction(internal.artifactTransfers.completeWorker, {
+        tokenId, assignmentVersion: Number(request.headers.get("x-mu-assignment-version")), requestId, uploadId: requiredString(body.uploadId, "uploadId") as Id<"storageUploads">,
+        name: requiredString(body.name, "name"),
+        ...(body.nodeName !== undefined ? { nodeName: requiredString(body.nodeName, "nodeName") } : {}),
+        ...(body.label !== undefined ? { label: requiredString(body.label, "label") } : {}),
+      }) });
+    } catch { return json({ error: "Artifact operation refused. Check assignment, upload session and storage configuration." }, 400); }
+  }) });
 }
 
 http.route({ path: "/api/notifications/send", method: "OPTIONS", handler: options });
@@ -204,7 +166,8 @@ http.route({
   path: "/api/notifications/send",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (!(await authorize(ctx, request))) {
+    const tokenId = await authorize(ctx, request);
+    if (!tokenId) {
       return json(
         { error: "Unauthorized: provide an active unit token" },
         401,
@@ -212,6 +175,7 @@ http.route({
     }
 
     try {
+      await ctx.runQuery(internal.workerAccess.bootstrap, { tokenId });
       const body: unknown = await request.json();
 
       if (
@@ -271,7 +235,8 @@ http.route({
   path: "/api/units/heartbeat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (!(await authorize(ctx, request))) {
+    const tokenId = await authorize(ctx, request);
+    if (!tokenId) {
       return json(
         { error: "Unauthorized: provide an active unit token" },
         401
@@ -351,6 +316,7 @@ http.route({
       const result = await ctx.runMutation(
         internal.units.heartbeat,
         {
+          tokenId,
           unitId: data.unitId,
           unitType: data.unitType ?? "unknown",
           workingDir: data.workingDir ?? "",
@@ -377,7 +343,8 @@ http.route({
   path: "/api/requests/claim",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (!(await authorize(ctx, request))) {
+    const tokenId = await authorize(ctx, request);
+    if (!tokenId) {
       return json(
         { error: "Unauthorized: provide an active unit token" },
         401
@@ -389,6 +356,7 @@ http.route({
       const unitId = requiredString(body.unitId, "unitId");
       const selection = parseSelection(body);
       const claimed = await ctx.runMutation(internal.units.claim, {
+        tokenId,
         unitId,
         ...selection,
       });
@@ -414,20 +382,7 @@ http.route({
     if (!(await authorize(ctx, request))) {
       return json({ error: "Unauthorized: provide an active unit token" }, 401);
     }
-    try {
-      const body = objectBody(await request.json());
-      const specSlug = requiredString(body.specSlug, "specSlug");
-      const pipelineName = requiredString(body.pipelineName, "pipelineName");
-      if (!Object.prototype.hasOwnProperty.call(body, "payload")) {
-        throw new Error("payload is required");
-      }
-      const requestId = await ctx.runMutation(internal.requests.createFromWorker, {
-        specSlug, pipelineName, payload: body.payload,
-      });
-      return json({ requestId }, 201);
-    } catch (error) {
-      return json({ error: error instanceof Error ? error.message : "Invalid request" }, 400);
-    }
+    return json({ error: "Worker tokens cannot create or inspect arbitrary requests. Use the Clerk-authenticated application." }, 403);
   }),
 });
 
@@ -438,25 +393,7 @@ http.route({
     if (!(await authorize(ctx, request))) {
       return json({ error: "Unauthorized: provide an active unit token" }, 401);
     }
-    try {
-      const params = new URL(request.url).searchParams;
-      const data: Record<string, unknown> = {};
-      for (const key of ["specSlug", "maxCount", "byPipeline", "byStatus", "byUnitId"]) {
-        const values = params.getAll(key);
-        if (values.length > 1) throw new Error(`${key} must occur only once`);
-        if (values.length) data[key] = values[0];
-      }
-      if (data.maxCount !== undefined) {
-        if (!/^\d+$/.test(data.maxCount as string)) {
-          throw new Error("maxCount must be an integer from 1 to 100");
-        }
-        data.maxCount = Number(data.maxCount);
-      }
-      const result = await ctx.runQuery(internal.requests.inspect, parseSelection(data));
-      return json(result);
-    } catch (error) {
-      return json({ error: error instanceof Error ? error.message : "Invalid request" }, 400);
-    }
+    return json({ error: "Worker tokens cannot create or inspect arbitrary requests. Use the Clerk-authenticated application." }, 403);
   }),
 });
 
@@ -464,7 +401,8 @@ http.route({
   path: "/api/requests/report",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (!(await authorize(ctx, request))) {
+    const tokenId = await authorize(ctx, request);
+    if (!tokenId) {
       return json(
         { error: "Unauthorized: provide an active unit token" },
         401
@@ -570,6 +508,8 @@ http.route({
       await ctx.runMutation(
         internal.requests.report,
         {
+          tokenId,
+          assignmentVersion: Number(request.headers.get("x-mu-assignment-version")),
           id: body.id as never,
           ...(body.status !== undefined && {
             status: body.status as "waiting" | "possessed" | "processing" | "process_failed" | "artifact_available" | "retrieve_artifact_failed" | "succeeded",
@@ -595,7 +535,8 @@ http.route({
   pathPrefix: "/api/specs/",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    if (!(await authorize(ctx, request))) {
+    const tokenId = await authorize(ctx, request);
+    if (!tokenId) {
       return json(
         { error: "Unauthorized: provide an active unit token" },
         401
@@ -618,6 +559,7 @@ http.route({
     }
 
     try {
+      await ctx.runQuery(internal.workerAccess.bootstrap, { tokenId, specSlug });
       const yaml = await ctx.runQuery(
         internal.specs.getYaml,
         { slug: specSlug }

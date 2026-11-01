@@ -11,6 +11,8 @@ type UnitToken = {
   _id: Id<"unitTokens">;
   _creationTime: number;
   name: string;
+  unitId?: string;
+  specSlugs?: string[];
   createdAt: number;
   lastUsedAt?: number;
   expiresAt?: number;
@@ -49,6 +51,11 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
   const revealOpen = useRef(open);
   revealOpen.current = open;
   const [includeRevoked, setIncludeRevoked] = useState(false);
+  const [specSlugsInput, setSpecSlugsInput] = useState("");
+  const [editSpecSlugs, setEditSpecSlugs] = useState("");
+  const [unitId, setUnitId] = useState("");
+  const [editUnitId, setEditUnitId] = useState("");
+  const storageAccess = useQuery(api.storage.list, {});
   const [name, setName] = useState("");
   const [expiresAtInput, setExpiresAtInput] = useState("");
   const [editingId, setEditingId] = useState<Id<"unitTokens"> | null>(null);
@@ -88,6 +95,8 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
       const expiresAt = expiryTimestamp(expiresAtInput);
       await createUnitToken({
         name,
+        unitId,
+        specSlugs: specSlugsInput.split(",").map(s => s.trim()).filter(Boolean),
         tokenHash,
         ...(expiresAt !== null && { expiresAt }),
       });
@@ -108,7 +117,7 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
     setError("");
     try {
       const expiresAt = expiryTimestamp(editExpiresAtInput);
-      await updateUnitToken({ id: editingId, name: editName, expiresAt });
+      await updateUnitToken({ id: editingId, name: editName, unitId: editUnitId, specSlugs: editSpecSlugs.split(",").map(s => s.trim()).filter(Boolean), expiresAt });
       setEditingId(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not update unit token.");
@@ -142,7 +151,7 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
 
   function beginEdit(token: UnitToken) {
     setEditingId(token._id);
-    setEditName(token.name);
+    setEditName(token.name); setEditUnitId(token.unitId ?? ""); setEditSpecSlugs((token.specSlugs ?? []).join(", "));
     setEditExpiresAtInput(toLocalDateTime(token.expiresAt));
   }
 
@@ -151,6 +160,8 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
     if (token.expiresAt !== undefined && token.expiresAt <= Date.now()) return "Expired";
     return "Active";
   }
+
+  if (storageAccess && !storageAccess.isOwner) return <p>Only the owner can manage worker tokens.</p>;
 
   return (
     <section className="editor-view unit-tokens-view">
@@ -166,6 +177,8 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
       <form className="auth-admin-card unit-token-create" onSubmit={(event) => void createToken(event)}>
         <div><b>Create unit token</b><p>Token plaintext is shown once. Save it in the Unit's secret configuration.</p></div>
         <div className="unit-token-form-fields">
+          <label>Allowed spec slugs<Input required value={specSlugsInput} onChange={event => setSpecSlugsInput(event.target.value)} placeholder="spec-a, spec-b" /></label>
+          <label>Worker unit ID<Input required value={unitId} onChange={event => setUnitId(event.target.value)} placeholder="Exact --unit-id used by this worker" /></label>
           <label>Name<Input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Unit or integration" /></label>
           <label>Expires at <Suspense fallback={datePickerLoading}><DateTimePicker label="New token expiration" min={toLocalDateTime(Date.now() + 60_000)} value={expiresAtInput} onValueChange={setExpiresAtInput} disabled={saving} /></Suspense></label>
           <button className="request-button" disabled={saving}>{saving ? "Creating…" : "Create token"}</button>
@@ -197,10 +210,13 @@ export function UnitTokensView({ open = true }: { open?: boolean }) {
                   {token.deletedAt === undefined && <button className="subtle-button danger" disabled={saving || refreshing} onClick={() => void revokeToken(token)}>Revoke</button>}
                 </div>
               </div>
+              <small>Worker: {token.unitId ?? "Unbound — configure before use"} · Specs: {token.specSlugs?.join(", ") || "Not configured"}</small>
               <small>Created {new Date(token.createdAt).toLocaleString()} · Last used {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</small>
               <small>Expires {token.expiresAt ? new Date(token.expiresAt).toLocaleString() : "Never"}</small>
               {editingId === token._id && (
                 <form className="unit-token-edit" onSubmit={(event) => void updateToken(event)}>
+                  <label>Allowed spec slugs<Input required value={editSpecSlugs} onChange={event => setEditSpecSlugs(event.target.value)} /></label>
+                  <label>Worker unit ID<Input required value={editUnitId} onChange={event => setEditUnitId(event.target.value)} /></label>
                   <label>Name<Input required value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
                   <label>Expires at<Suspense fallback={datePickerLoading}><DateTimePicker label="Token expiration" min={toLocalDateTime(Date.now() + 60_000)} value={editExpiresAtInput} onValueChange={setEditExpiresAtInput} disabled={saving} /></Suspense></label>
                   <button className="request-button" disabled={saving}>{saving ? "Saving…" : "Save token"}</button>

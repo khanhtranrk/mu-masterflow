@@ -62,3 +62,10 @@ export async function requireAuthenticated(ctx: AuthContext) {
   }
   return identity.subject;
 }
+
+export async function requireOwner(ctx: QueryCtx | MutationCtx) {
+  const userId = await requireAuthenticated(ctx);
+  const settings = await ctx.db.query("storageSettings").first();
+  if (!settings || settings.ownerId !== userId) throw new ConvexError("Only the application owner can do this.");
+  return userId;
+}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ConnectionSettings, ConvexServerProfile } from "../connectionSettings";
+import { StorageConnectionsView } from "./StorageConnectionsView";
 import { UnitTokensView } from "./UnitTokensView";
 import { ServerSettingsPanel } from "./ServerSettingsPanel";
 
@@ -92,6 +93,8 @@ export function SettingsView({
             <UnitTokensView key={serverProfile.id} open={unitTokensExpanded} />
           </div>
         </section>}
+
+        {serverProfile && <section className="settings-section"><StorageConnectionsView /></section>}
 
         {serverProfile && <section className="settings-section settings-account" aria-labelledby="account-title">
           <div className="settings-section-copy">

@@ -1,92 +1,101 @@
-# Request artifacts
+# Request artifacts and storage connections
 
-Artifacts belong to a request in `requests.artifacts[]`. File bytes live in Convex File Storage; the request stores metadata and a `storageId`, never a persisted download URL. No separate application file table is needed. `artifactUploads` holds upload receipts, not the artifact list.
+Artifacts use private Supabase Storage or Cloudflare R2 buckets through the same S3-compatible handler. Convex authorizes operations, stores metadata and signs URLs. File bytes never pass through Convex HTTP actions. Existing Convex files remain readable through a transitional `convex-legacy` handler.
 
-## Stored shape
+## Data model
+
+The authoritative `artifacts` table stores `artifactId`, `requestId`, `handler`, and handler-specific `metadata`. `(requestId, artifactId)` is unique through an indexed transactional lookup. The same artifactId may occur in different requests. Metadata includes the stable connection ID and object key for S3, or storageId for legacy files, plus filename, MIME type, byte count, creation time, optional node/label and run generation. No signed URLs are stored.
+
+Requests and node states retain compatibility projections for the existing graph, reports and CLI. These snapshots are updated transactionally with the canonical artifact record; they are not independent storage configuration. The desktop artifact disclosure queries the canonical table, falling back to existing legacy snapshots during migration. A future wire-version migration can reduce node snapshots to IDs without changing storage handlers.
+
+`storageConnections` records have a unique immutable `connectionId` such as `r2-1` or `supabase-1`. Provider, endpoint, region, bucket and prefix cannot be repointed under an existing ID. Create a new connection for a different location; credentials and display name can be updated under the same ID. Connections are disabled rather than removed or reused. Changing the default only changes future upload sessions.
+
+`storageSettings` contains the application owner's Clerk subject and the default connection ID. `storageUploads` records bind each upload to its request, artifactId, connection, caller, request reset version, worker assignment version, server-generated keys, expected size, declared checksum and expiry. Deletion tombstones are retained to prevent an old completion/report from restoring a deleted record. There is a limit of 100 logical artifact IDs (including tombstones) per request and 20 simultaneously pending uploads per request.
+
+## Authorization
+
+- A valid Clerk identity must also pass the deployment whitelist.
+- Only the configured application owner can manage connections, worker tokens, or remove artifact records.
+- Worker tokens are bound to an immutable `unitId` and owner-configured `specSlugs`. Existing tokens without these settings cannot bootstrap or claim work until the owner updates them.
+- Heartbeat must use the token's unit ID. Tokens cannot take over another active token's unit. Revoke the old token before rotation to another token for the same unit.
+- Claim only selects `waiting` requests from allowed specs. Assignment stores the actual token ID and increments `assignmentVersion` atomically.
+- Upload, completion, download and report require the assigned token and current assignment generation. Workers cannot replace an artifact from the same run, delete records, manage storage, create requests or inspect arbitrary requests. A rerun may publish the same logical artifact ID for a new request reset generation; old bytes are retained.
+- Heartbeat, fetching explicitly allowed specs and worker notifications remain bootstrap/telemetry capabilities needed by the worker lifecycle.
+- Soft-deleted requests deny new artifact access, while reports from their already assigned worker remain accepted. Reset/reassignment invalidates old uploads and reports.
+
+## Direct transfer protocol
+
+Worker calls below use `Authorization: Bearer <UNIT_TOKEN>`. Request-specific artifact calls and reports also send `X-Mu-Assignment-Version: <assignmentVersion from claim>`. The updated Mu runtime supplies that header automatically for action requests to its configured MasterFlow origin.
+
+`POST /api/requests/artifacts/upload-url` accepts:
 
 ```json
-{
-  "artifacts": [{
-    "id": "render:output",
-    "nodeName": "render",
-    "name": "song.wav",
-    "label": "Generated song",
-    "storageId": "<STORAGE_ID>",
-    "contentType": "audio/wav",
-    "size": 8451230,
-    "createdAt": 1793422800000
-  }]
-}
+{"requestId":"<id>","artifactId":"audio","connectionId":"r2-1","size":123,"sha256":"<64 lowercase hex characters>","contentType":"audio/wav"}
 ```
 
-`id` is stable within a request and identifies one logical output; choose a different ID to retain multiple versions. `nodeName` and `label` are optional. Node names are annotations, not validated against the current YAML, so later spec edits do not hide historical outputs. Names must be file basenames without slashes. Text fields reject control characters and exceed neither 255 characters nor 128 for the artifact ID. `contentType`, byte `size` and Unix-millisecond `createdAt` come from the backend. Missing `artifacts` means an empty list, preserving old requests. At most 100 artifacts are allowed per request to keep the document bounded; request payload/logs still share Convex's document-size limit.
+`connectionId` and `contentType` are optional; the backend default and `application/octet-stream` apply. The backend returns:
 
-Only uploaded, completed files appear here. Uploading a file does not change request or node execution status. Workers should report status separately. Duplicating a request copies its input payload, not its artifacts. Desktop uploads attach to the whole request with a new random artifact ID; worker uploads can specify a node and stable ID.
+```json
+{"uploadId":"<id>","uploadUrl":"<presigned URL>","method":"PUT","headers":{"Content-Type":"audio/wav"},"expiresAt":1234567890000}
+```
 
-## Upload: three requests
+Upload raw bytes using exactly the method and headers. Do not send a Clerk JWT or unit token to storage. Browser fetch supplies Content-Length from its File/Blob; Mu sets it from the local file. Size and content type are signed into the PUT. The storage PUT response is not expected to contain JSON or a Convex storageId.
 
-All application worker endpoints below use the HTTP **site** URL and an active `Authorization: Bearer <UNIT_TOKEN>`. Worker tokens have the same deployment-wide access as the existing worker API; they are not scoped to units or individual requests. An upload receipt, however, can only be completed using the same token that created it. Desktop receipts are bound to the authenticated user and cannot be completed through worker endpoints.
+`POST /api/requests/artifacts/complete` accepts `requestId`, `uploadId`, `name`, and optional `nodeName`/`label`. It returns `{artifact: <compatibility projection>}`. The backend checks the staged object's size/ETag using HEAD, reserves completion details transactionally, performs conditional server-side CopyObject to a distinct final key, checks the destination size and commits metadata. Retry with identical details is idempotent. Reusing the staging PUT cannot modify the finalized object. SDK/provider errors are not returned with credential-bearing request details.
 
-Before starting, calculate the file's SHA-256 and byte size. Keep the file unchanged during the flow.
+The declared SHA-256 is not treated as independently verified integrity: HEAD/ETag do not prove a SHA-256 digest. The migration utility explicitly downloads and hashes the staged destination before committing the switch. Do not build security decisions on worker-reported checksums.
 
-1. `POST /api/requests/artifacts/upload-url`:
+`GET /api/requests/artifacts/download-url?requestId=<id>&artifactId=<id>` returns `url`, `expiresAt`, `name`, `contentType`, `size`, `legacy`. The old `/download` path now returns the same JSON response, not bytes. Follow the URL in a separate unauthenticated request; no proxy or credential-forwarding redirect is used.
 
-   ```json
-   {"requestId":"<REQUEST_ID>","artifactId":"render:output","sha256":"<64_LOWERCASE_HEX_CHARACTERS>","size":8451230}
-   ```
+Presigned PUTs last 15 minutes; GETs last 5 minutes. URLs are bearer capabilities reusable until expiry. Deleting a record, disabling a connection, signing out or revoking a token prevents future URL issuance, but does not revoke URLs already issued. Legacy URLs are not expiring and return `expiresAt: null, legacy: true`.
 
-   `size` accepts a nonnegative safe integer or a canonical decimal string such as `"8451230"` (convenient for Mu command stdout). No fractional, signed, whitespace or exponential string formats. The response is `200`:
+Single uploads are limited to 5 GiB, also subject to provider/project limits. Multipart/resumable upload is not implemented in this version. Server-side copy and HEAD require provider permissions in addition to object GET/PUT. The SDK uses path-style addressing and only required checksums for compatibility.
 
-   ```json
-   {"uploadId":"<UPLOAD_ID>","uploadUrl":"<NATIVE_CONVEX_UPLOAD_URL>","expiresAt":1793426400000}
-   ```
+## Owner setup
 
-2. `POST` raw file bytes to the returned `uploadUrl`, with the actual file MIME type in `Content-Type` (or `application/octet-stream`). **Do not send the worker token or desktop session to this URL.** It is a bearer upload capability, not an application API endpoint. Convex returns `{"storageId":"<STORAGE_ID>"}`. Use the returned URL unchanged: its host/port may differ from the HTTP site URL. Both worker and desktop must be able to reach it.
-3. `POST /api/requests/artifacts/complete`:
+1. Provision a private bucket. Disable public bucket access and public domains. R2 uses its S3 API endpoint, not a custom download domain. Supabase uses its `/storage/v1/s3` endpoint and the configured region; enable S3 in its settings.
+2. Configure `STORAGE_ENCRYPTION_KEY` on the Convex deployment: a base64-encoded random 32-byte key. Keep a separate secure copy. It is never a VITE variable.
+3. Initialize the application owner once using the admin-only command `bunx --bun convex run storage:initialize '{"ownerId":"user_<owner>"}'`. It refuses to overwrite an existing owner.
+4. In Settings → Storage connections, enter connection details and S3 credentials. The backend tests bucket access and encrypts credentials using AES-256-GCM, a random nonce and the connection ID as authenticated data. Lists never return the ciphertext or stored keys. Edit/rotate requires re-entering credentials; location is immutable.
+5. Choose the default connection. Desktop uploads can override it per file; worker specs can pass an explicit connectionId in upload-url requests.
+6. In Settings → Unit tokens, bind each existing token to its exact worker unit ID and allowed spec slugs, or create a new scoped token. Update Mu CLI and YAML upload routines before restarting workers.
 
-   ```json
-   {"requestId":"<REQUEST_ID>","uploadId":"<UPLOAD_ID>","storageId":"<STORAGE_ID>","name":"song.wav","nodeName":"render","label":"Generated song"}
-   ```
+S3 HeadBucket does not prove that a bucket is private. Private-access configuration is an owner responsibility: verify that unsigned access to a known object is refused. Supabase project S3 keys bypass RLS and must remain server-side. R2 credentials should be limited to the intended buckets. Neither workers nor the desktop receive secret access keys; signed URLs necessarily include the access-key identifier as part of SigV4.
 
-   Response: `200`, `{"artifact":{...}}` using the stored shape above. `nodeName` and `label` may be omitted.
+Allow browser/Tauri origins in bucket CORS with GET/PUT/HEAD and the signed content-type headers. Do not use CORS as authorization. Configure an explicit lifecycle rule for `<prefix>/staging/` if temporary copies should expire. The application does not automatically delete temporary or finalized files.
 
-The upload URL and receipt expire after one hour. Native upload has no application file-size cap, but Convex documents a two-minute upload POST timeout; increasing Mu's timeout does not override server/proxy deadlines. Completion checks caller, request, expiry, file existence, file creation time (no older than the receipt), expected SHA-256 and size, and an exclusive storage binding. These checks attest to the declared content; the native upload capability itself is not bound to a particular request by Convex. Other known storage IDs cannot be attached unless they satisfy the content/time checks and are unbound.
+For the local browser at port 4175, an R2 dashboard CORS policy is:
 
-Completion atomically upserts one artifact by its logical `id`, preserving siblings when concurrent nodes complete. Completing the same receipt/storage ID again returns the saved artifact without changes, even after expiry. A completed receipt cannot be reused for another file or replayed over a later replacement. When a new receipt replaces an existing artifact ID, last successful completion wins and the old file is deleted in the same mutation. Never reuse a storage ID across artifacts; copy/reupload bytes instead.
+```json
+[{"AllowedOrigins":["http://127.0.0.1:4175","http://localhost:4175"],"AllowedMethods":["GET","PUT","HEAD"],"AllowedHeaders":["Content-Type"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3600}]
+```
 
-If byte upload fails, retry it while the receipt is valid. If completion's response is lost, retry **completion with the same IDs**, not byte upload. If the receipt expires before completion, start a new flow. A new upload may produce a new file even for identical content.
+Use the actual deployed browser or Tauri origin when adding other clients. A successful backend connection test does not verify browser CORS. See [Cloudflare's CORS configuration](https://developers.cloudflare.com/r2/buckets/cors/).
 
-## Download
+## Migration and portability
 
-Two worker endpoints accept URL-encoded `requestId` and `artifactId` query parameters:
+Before cutover, finish old workers where possible. Old unscoped tokens and already claimed requests without a token assignment cannot bypass the new guards. Bind tokens explicitly and requeue interrupted work through the owner-controlled workflow; do not guess a token-to-worker mapping. Old clients assuming POST uploads/storageId/proxied downloads must update with the server.
 
-- `GET /api/requests/artifacts/download?requestId=<REQUEST_ID>&artifactId=render%3Aoutput` checks the unit token on every request and returns file bytes with attachment disposition, original filename, MIME type, `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`. Files over 100 MiB return `413`; use the URL endpoint for those.
-- `GET /api/requests/artifacts/download-url?requestId=<REQUEST_ID>&artifactId=render%3Aoutput` returns `200`, `{"url":"<DOWNLOAD_URL>","name":"song.wav","contentType":"audio/wav","size":8451230}`. Fetch the returned URL without the worker token.
+For saved YAML, run the owner-only `scripts/update-storage-specs.mjs` in preview mode, then `--apply` after reviewing the affected slugs. It changes recognized native upload/completion/download actions, retains unknown sections and rejects concurrent edits.
 
-**Direct storage download URLs are bearer links without automatic app-level expiry.** Anyone holding one can download without logging in; token revocation or soft-deleting a request does not invalidate an already shared link. Deleting/replacing the stored file invalidates its old link. Use the authenticated byte endpoint when each access must be checked; do not expose direct URLs for that use case. A deployment's network/reverse-proxy limits may be stricter than Convex's limits.
+Backfill metadata in bounded pages using admin-only `artifactMigration:backfill` with `{cursor:null}`, then the returned cursor until `done`. It is idempotent and changes neither files nor existing projections.
 
-Desktop queries/mutations `requestArtifacts.startUpload`, `completeUpload` and `urls` require a verified Clerk identity and backend whitelist access. Each expanded request contains a separate **Artifacts** disclosure, collapsed initially, showing the total file count. Expanding it shows the common artifact list, filename, size and optional node. Nodes display a clickable artifact count instead of duplicating file details. Clicking a graph count or the selected node's count opens the common list, selects that node, pauses execution following, scrolls to the first matching file and highlights every referenced artifact while keeping other files visible. **Clear highlight** removes the emphasis. Highlights remain attached to the chosen node during reactive updates; counts include registered files only. The disclosure and highlight state are independent per expanded request. **Upload file** performs the same three steps; the desktop hashes the selected file in memory, so use Mu for very large files. **Download** opens a direct storage bearer link. Sensitive deployments should account for this explicit sharing model.
+After configuring a target connection, the owner can transfer legacy files outside Convex:
 
-`GET /api/requests` and `POST /api/requests/claim` include optional `artifacts` metadata with each request. They do not include download URLs. Old requests may omit this field. Mu makes claimed metadata available in `request`, so an artifact ID can be selected from `request.artifacts`; newly completed artifacts are delivered reactively to the desktop, not written back into an already-running Mu context. Use the known artifact ID for subsequent API calls.
+```sh
+# Obtain a fresh Clerk JWT accepted by Convex; do not commit it or log it.
+# Set MU_CONVEX_URL and MU_CLERK_JWT securely in your shell.
+node scripts/migrate-artifacts.mjs r2-1
+```
 
-## Errors, retention and compatibility
+The utility streams each source to a temporary local file, hashes it, uploads directly to the target, verifies the staged destination bytes/hash, then completes and switches metadata. It skips deleted/older-run references through the paginated owner query. Failed transfers leave the old reference intact until completion; temporary objects may remain for lifecycle cleanup. Rerunning skips migrated records. JWT/session expiry can interrupt a long run; obtain a fresh token and retry.
 
-Application endpoints return `401` for missing/revoked/expired tokens; registration returns `400` for invalid/mismatched/expired receipts, absent or soft-deleted requests, invalid metadata, or a full artifact list. Download returns `404` for missing/soft-deleted requests, absent artifacts or missing storage bytes, and `400` for malformed arguments. All four routes support `OPTIONS` with `204`. Native upload errors come from Convex Storage and can differ from application JSON errors.
+Original Convex files are retained. Previously distributed legacy URLs remain usable until those original files are explicitly deleted in a separate, deliberate operation. Removing an artifact record is never that operation. New S3 artifacts use private temporary URLs.
 
-Soft deletion of a request retains its artifacts and bytes. It blocks new upload receipts, completion and new download lookups, including authenticated byte downloads; it does not revoke previously issued bearer links. Spec archival also retains requests and files. Artifact receipts are retained for exclusive binding and idempotency; there is no automatic retention or garbage-collection job in this version. Failed/abandoned direct uploads can leave unreferenced files, and incomplete receipts remain in the database. Review those through the Convex dashboard and delete only files proven unreferenced. Do not bulk-delete storage merely because a file has no receipt: another feature might use it. A future permanent request purge must delete its files and receipts deliberately.
+Moving Convex servers requires the database (connections, artifacts, sessions, ownership, worker hashes) and the same encryption key transferred separately, plus Clerk issuer/whitelist configuration. Stable connection IDs and object keys resolve the same external files. A database copy without the encryption key cannot decrypt credentials. Database encryption protects snapshots, not an administrator who also controls the backend/key. Rotate the master key only with a planned decrypt/re-encrypt procedure; simply replacing it makes stored credentials unreadable.
 
-`nodeStates.<node>.artifacts` is retained as an optional array using **the same artifact validator and metadata shape** as `requests.artifacts[]`. It references registered request files; it does not own another storage object. Legacy string maps are no longer accepted by the schema or report API. Local data was checked before this rollout and had no such maps. Other deployments with old maps must migrate them before applying the strict schema: preserve old paths separately, upload the actual files through a compatible intermediate deployment, and replace each map with registered metadata arrays. A local path/URL cannot be converted into a valid storage ID without uploading its bytes. Never silently discard historical maps or invent storage IDs.
+## Verification
 
-`POST /api/requests/report` accepts `node_states.<name>.artifacts: [...]`. Each entry must exactly match an artifact already registered on that request, including ID, storage ID, name, MIME type, size, timestamp and optional label/node name. If the registered artifact declares `nodeName`, it must match the reported node. Duplicate IDs, unregistered storage IDs, forged metadata and legacy maps are rejected atomically. The same validation runs in `requests.report` even when called internally. Reports cannot register new files or overwrite top-level `requests.artifacts`; a top-level `artifacts` report property is rejected with instructions to use completion.
+`bun test tests/storage.test.ts` covers actual Convex handlers with mocked identities/database, authenticated credential encryption, assignment checks, owner-only deletion, waiting-only claiming and S3 transfer actions against a local protocol server. `node --test tests/worker-api.test.cjs` retains request/report/reset/activity regressions and the deliberately restricted HTTP routes. Typecheck both frontend and Convex, then build Vite.
 
-For an existing node, omitting `artifacts` retains its array; supplying an array replaces its node references. `[]` clears node references without deleting the request artifact or file. A newly reported node must include a valid status; when its artifacts are omitted, it inherits request artifacts whose `nodeName` matches. Upload completion refreshes/adds references on already-reported matching nodes, preserves all other node fields, and never creates a new runtime status. Replacing a file updates existing node references before deleting old bytes; moving an artifact to a different node removes its old node reference. Unassigned artifacts may be referenced by multiple nodes in the same request. Repeat completion returns the previous result and does not undo later node report choices.
-
-`requests.update` still changes only payload/status, `editPayload` only validated waiting payload, `units.claim` only assignment/status, and `requests.remove` only soft-deletion time: all preserve request and node artifact arrays. `requests.report` appends logs, retains omitted device/status fields and keeps accepting in-flight reports for soft-deleted requests. Desktop and worker creation reject archived specs.
-
-For self-hosting, persist and back up both database data and file storage. Configure the backend's advertised API origin and reverse proxy so native upload/download URLs are reachable from remote workers. See [development](development.md) and the [official Convex storage guide](https://docs.convex.dev/file-storage).
-
-## Mu integration
-
-`send_http_request` uses `body_file` for raw streaming upload, `response_file` for atomic streaming download, and optional positive `timeout` in seconds (default 30). JSON `body` and `body_file` are mutually exclusive. File paths are relative to the worker working directory unless absolute. A download keeps `body: null` and saves `response_file` and `size` in its action result; HTTP errors keep their JSON/text error body and never replace the destination.
-
-The companion Mu repository includes a CPU-only executable example at `examples/master-flow-artifacts/spec.yaml`, plus its action contract in `docs/spec-format/04-actions.md`. It creates a tiny JSON artifact, calculates its digest and size, uploads it, completes registration, downloads the same bytes through the authenticated endpoint, and compares the files. Configure credentials outside the spec. Never run this example against a request you do not intend to modify.
+The local S3 server is a protocol fixture, not proof of provider-side security or compatibility. Verify a real private bucket on each provider, CORS/Tauri, expiry and unsigned denial before production use. File migration is not run automatically.

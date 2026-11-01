@@ -27,7 +27,7 @@ CONVEX_SELF_HOSTED_ADMIN_KEY=<self-hosted Convex CLI admin key>
 
 For the standard self-hosted Docker setup, the backend API/client URL is `http://127.0.0.1:3210`, while the HTTP actions/site URL is `http://127.0.0.1:3211`. Do not point `VITE_CONVEX_SITE_URL` at port 3210. The CLI uses `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` to connect to the self-hosted instance.
 
-Keep `.env.local` out of source control. `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` are for the Convex CLI only; MasterFlow does not ask for or store an admin key. App queries and mutations require a verified Clerk JWT and a matching backend whitelist entry. Worker HTTP hooks remain separately protected by worker bearer tokens; the authenticated desktop manages token metadata through the Convex client API. The UI generates a random bearer token in the browser, stores only its SHA-256 hash in Convex, and shows the plaintext once. Store each plaintext token in the corresponding worker's secret configuration.
+Keep `.env.local` out of source control. `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` are for the Convex CLI only; MasterFlow does not ask for or store an admin key. App queries and mutations require a verified Clerk JWT and a matching backend whitelist entry. Worker HTTP hooks remain separately protected by worker bearer tokens scoped to a unit, allowed specs and request assignments; the authenticated desktop manages token metadata through the Convex client API. The UI generates a random bearer token in the browser, stores only its SHA-256 hash in Convex, and shows the plaintext once. Store each plaintext token in the corresponding worker's secret configuration.
 
 ## Run locally
 
@@ -121,3 +121,9 @@ through `specIssues` as compatibility checks. Do not execute those examples to
 validate the editor: media execution may download models/use GPUs, and artifact
 execution writes to a server. This frontend-only validation change needs no
 Convex schema migration or deployment.
+
+## Multi-storage setup
+
+See [the storage setup and migration guide](request-artifacts.md#owner-setup) before running new artifact workloads. One deployment key, STORAGE_ENCRYPTION_KEY (base64 32 bytes), encrypts connection credentials stored in Convex. The application owner is initialized once in storageSettings through the admin-only storage:initialize mutation. Manage private buckets/default connections in Settings → Storage connections and bind worker tokens to exact unit IDs/allowed specs. Update CLI and upload YAML alongside the backend; old POST/storageId/native-download contracts have changed.
+
+Legacy artifacts remain readable and can be backfilled through artifactMigration:backfill. Copying bytes is an explicit owner-run external migration; deployment never deletes originals. Keep the database and encryption key when migrating Convex servers. Native storage volumes must still be retained until all legacy files have been deliberately migrated.
