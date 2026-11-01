@@ -1,6 +1,7 @@
 import { Input } from "./ui/Input";
 import { SelectField } from "./ui/SelectField";
 import { ActionMenu } from "./ui/ActionMenu";
+import { ArtifactPreview } from "./ArtifactPreview";
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
@@ -8,7 +9,7 @@ import { artifactDownloadUrl } from "../artifactDownloads";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { DisplayModeSwitch, useDisplayMode } from "../requestPresentation";
-import type { RequestItem } from "../types";
+import type { RequestArtifact, RequestItem } from "../types";
 
 type RequestArtifactsProps = {
   request: RequestItem;
@@ -36,8 +37,10 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
   const [error, setError] = useState("");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadStatus, setDownloadStatus] = useState("");
+  const [preview, setPreview] = useState<RequestArtifact | null>(null);
   const client = useConvex();
   const body = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!open) setPreview(null); }, [open]);
   useEffect(() => {
     if (!open || !highlightedNode) return;
     const first = body.current?.querySelector<HTMLElement>('[data-highlighted="true"]');
@@ -112,12 +115,16 @@ export function RequestArtifacts({ request, open, onToggle, panelId, highlighted
       return <div className={`request-artifact request-file ${highlighted ? "highlighted" : ""}`} key={artifact.id}
         data-highlighted={highlighted} tabIndex={-1} aria-label={`${artifact.label ?? artifact.name}${highlighted ? `, highlighted from ${highlightedNode}` : ""}`}>
         <div><b>{artifact.label ?? artifact.name}</b><small>{artifact.name} · {(artifact.size / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KiB{artifact.nodeName ? ` · ${artifact.nodeName}` : ""}</small></div>
-        <div className="artifact-file-actions"><button type="button" className="subtle-button" disabled={downloadingId !== null} onClick={() => void downloadFile(artifact.id)}>{downloadingId === artifact.id ? "Downloading…" : "Download"}</button>
-        {storage?.isOwner && <ActionMenu label={`Actions for ${artifact.name}`} trigger={<button type="button" className="subtle-button" aria-label={`Actions for ${artifact.name}`}>•••</button>} actions={[{ label: "Remove record", danger: true, onSelect: () => { if (window.confirm("Remove this artifact record? The stored file will be retained.")) void remove({ requestId: request.convexId as Id<"requests">, artifactId: artifact.id }).catch(cause => setError(String(cause))); } }]} />}</div>
+        <div className="artifact-file-actions"><button type="button" className="subtle-button" onClick={() => setPreview(artifact)}>View</button>
+        <ActionMenu label={`Actions for ${artifact.name}`} trigger={<button type="button" className="subtle-button" aria-label={`Actions for ${artifact.name}`}>•••</button>} actions={[
+          { label: downloadingId === artifact.id ? "Downloading…" : "Download", disabled: downloadingId !== null, onSelect: () => void downloadFile(artifact.id) },
+          ...(storage?.isOwner ? [{ label: "Remove record", danger: true, separator: true, onSelect: () => { if (window.confirm("Remove this artifact record? The stored file will be retained.")) void remove({ requestId: request.convexId as Id<"requests">, artifactId: artifact.id }).catch(cause => setError(String(cause))); } }] : []),
+        ]} /></div>
 
       </div>;
     })}
     </div>
     </div>
+    {preview && <ArtifactPreview key={preview.id} requestId={request.convexId} artifact={preview} onClose={() => setPreview(null)} />}
   </section>;
 }

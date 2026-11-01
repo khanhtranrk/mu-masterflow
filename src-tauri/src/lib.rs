@@ -5,6 +5,16 @@ use tauri_plugin_dialog::DialogExt;
 mod artifact_download;
 
 #[tauri::command]
+async fn read_artifact_preview(
+    url: String,
+    kind: String,
+) -> Result<artifact_download::PreviewBytes, String> {
+    tauri::async_runtime::spawn_blocking(move || artifact_download::preview_url(&url, &kind))
+        .await
+        .map_err(|_| "Could not read artifact preview.".to_string())?
+}
+
+#[tauri::command]
 async fn download_artifact(
     app: AppHandle,
     url: String,
@@ -103,7 +113,8 @@ pub fn run() {
             greet,
             load_connection_settings,
             save_connection_settings,
-            download_artifact
+            download_artifact,
+            read_artifact_preview
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

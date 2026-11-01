@@ -29,6 +29,7 @@
     "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "convex": "^1.48.0",
+    "pdfjs-dist": "^6.4.299",
     "react": "^19.1.0",
     "react-day-picker": "^10.0.2",
     "react-dom": "^19.1.0",

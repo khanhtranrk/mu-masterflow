@@ -1,7 +1,12 @@
-use std::{io, path::Path, time::Duration};
+use base64::Engine;
+use std::{
+    io::{self, Read},
+    path::Path,
+    time::Duration,
+};
 
 /// Stream into a sibling temporary file so failed transfers never damage an existing file.
-pub fn save_url(url: &str, destination: &Path, expected_size: u64) -> Result<(), String> {
+fn response(url: &str, timeout: Duration) -> Result<reqwest::blocking::Response, String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid download URL.")?;
     if !matches!(parsed.scheme(), "https" | "http")
         || !parsed.username().is_empty()
@@ -11,12 +16,12 @@ pub fn save_url(url: &str, destination: &Path, expected_size: u64) -> Result<(),
     }
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(20))
-        .timeout(Duration::from_secs(3600))
+        .timeout(timeout)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| "Could not initialize file download.")?;
     // No Clerk JWT, unit token or cookies are sent to the storage provider.
-    let mut response = client
+    let response = client
         .get(parsed)
         .send()
         .map_err(|_| "Could not reach storage. Check the connection and retry.")?;
@@ -26,6 +31,37 @@ pub fn save_url(url: &str, destination: &Path, expected_size: u64) -> Result<(),
             response.status().as_u16()
         ));
     }
+    Ok(response)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewBytes {
+    base64: String,
+    truncated: bool,
+}
+
+pub fn preview_url(url: &str, kind: &str) -> Result<PreviewBytes, String> {
+    let limit = match kind {
+        "text" => 1024 * 1024,
+        "pdf" => 16 * 1024 * 1024,
+        _ => return Err("Unsupported preview type.".into()),
+    };
+    let mut bytes = Vec::new();
+    response(url, Duration::from_secs(45))?
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Preview download was interrupted.")?;
+    let truncated = bytes.len() as u64 > limit;
+    bytes.truncate(limit as usize);
+    Ok(PreviewBytes {
+        base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        truncated,
+    })
+}
+
+pub fn save_url(url: &str, destination: &Path, expected_size: u64) -> Result<(), String> {
+    let mut response = response(url, Duration::from_secs(3600))?;
     let parent = destination.parent().ok_or("Invalid destination folder.")?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)
         .map_err(|_| "Could not create a temporary file in the destination folder.")?;
@@ -71,6 +107,24 @@ mod tests {
             socket.write_all(response.as_bytes()).unwrap();
         });
         url
+    }
+    #[test]
+    fn preview_reads_are_bounded_and_do_not_require_auth_headers() {
+        let preview = preview_url(&server("200 OK", "hello"), "text").unwrap();
+        assert_eq!(preview.base64, "aGVsbG8=");
+        assert!(!preview.truncated);
+        let large = "x".repeat(1024 * 1024 + 100);
+        let preview = preview_url(&server("200 OK", &large), "text").unwrap();
+        assert!(preview.truncated);
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(preview.base64)
+                .unwrap()
+                .len(),
+            1024 * 1024
+        );
+        assert!(preview_url("file:///etc/passwd", "text").is_err());
+        assert!(preview_url("http://127.0.0.1", "unsupported").is_err());
     }
     #[test]
     fn downloads_bytes_and_preserves_existing_destination_on_errors() {
